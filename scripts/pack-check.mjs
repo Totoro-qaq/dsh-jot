@@ -1,0 +1,20 @@
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
+import assert from 'node:assert/strict';
+
+const manifest = JSON.parse(await readFile('package.json', 'utf8'));
+const source = await readFile('lib/client.js', 'utf8');
+let registration;
+runInNewContext(source, { window: { __ModuleLoader__: { load(value) { registration = value; } } } });
+assert.equal(registration?.id, manifest.name);
+assert.equal(typeof registration.factory, 'function');
+const require = createRequire(import.meta.url);
+const externalNames = new Set(['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client']);
+const exported = registration.factory(name => { assert.ok(externalNames.has(name), `Unsupported client external: ${name}`); return require(name); });
+assert.equal(typeof exported.apply, 'function');
+assert.ok(Array.isArray(exported.inject));
+const host = await import('../lib/index.js');
+assert.equal(typeof host.apply, 'function');
+assert.ok(Array.isArray(host.inject));
+console.log('Host exports, Client factory identity, and shared React imports verified.');

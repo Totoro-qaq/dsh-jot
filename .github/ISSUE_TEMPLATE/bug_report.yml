@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a reproducible problem with Jot.
+title: '[Bug] '
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the result you expected and the result you observed.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a small example note if needed. Remove private content first.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions and platform
+      placeholder: 'Jot 0.2.2; DSH 0.2.0-rc.2; macOS Desktop / Windows Web / Linux Web'
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or relevant logs
+      description: Remove tokens, account details, private notes, and identifying paths. Mention other UI plugins if the problem only occurs with them.
