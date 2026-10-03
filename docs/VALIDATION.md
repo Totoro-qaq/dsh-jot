@@ -1,6 +1,19 @@
-# Validation — dsh-jot 0.2.2
+# Validation — dsh-jot 0.2.3
 
 Dates: 2026-10-02 and 2026-10-03 (Asia/Shanghai).
+
+## 0.2.3 — Windows lock acquisition compatibility
+
+The first public 0.2.2 source CI passed all 142 tests on Linux Node 22.19.0 / 24 and Windows/macOS Node 24. A second tag-triggered run exposed an intermittent Windows exclusive-open `EPERM` during the unchanged 12-concurrent-note test. The other tests and three other platform jobs passed. This demonstrates why one green run was not a guarantee against this timing window.
+
+Version 0.2.3 shares a lock acquisition helper between notes and attachments. Only a Windows `EPERM` during exclusive `wx` creation retries within the existing 5-second deadline and 12ms interval. Existing-lock `EEXIST` retains its original timeout; sustained permission errors retain their original cause. Metadata initialization is outside the retry loop, and no unowned lock is removed. Windows delete-pending access-denied behavior is a source-backed explanation consistent with the failure, not a captured kernel trace.
+
+Ten deterministic regressions cover transient and permanent errors, platform boundaries, initialization failure, exclusive flags and ownership cleanup for both stores. Strict typecheck, all **152 tests** on the minimum Node 22.19.0 and the development runtime, build and package checks passed. The original concurrency and security tests were not weakened. CI and public-release results are reported separately from the historical native UI checks below.
+
+[Initial source CI](https://github.com/Totoro-qaq/dsh-jot/actions/runs/37130262442) · [Windows failure](https://github.com/Totoro-qaq/dsh-jot/actions/runs/37130514935)
+
+## Historical verification — 0.2.2
+
 
 ## 0.2.2 status — source and table interaction checks passed
 

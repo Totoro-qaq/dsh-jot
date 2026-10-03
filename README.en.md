@@ -10,7 +10,7 @@
   <a href="./README.md">中文</a> · English · <a href="./docs/GUIDE.zh-CN.md">Guide (Chinese)</a> · <a href="./docs/VALIDATION.md">Validation</a> · <a href="./LICENSE">MIT</a>
 </p>
 
-**0.2.2** · Validated with **DeepSeek Harness 0.2.0-rc.2** · [Releases](https://github.com/Totoro-qaq/dsh-jot/releases)
+**0.2.3** · Validated with **DeepSeek Harness 0.2.0-rc.2** · [Releases](https://github.com/Totoro-qaq/dsh-jot/releases)
 
 ![Jot full workbench in the actual DSH Host, showing notes, checklists, tables, colors and highlights in English](./assets/readme/workbench-en.png)
 
@@ -67,7 +67,7 @@ Data stays in `$DSH_HOME/jot`, or `~/.dsh/jot` when unset. Back up the whole dir
 
 Attachments default to 20 MiB per file and 500 MiB total. Cloud sync, real-time collaboration, drawing and version history are not included. PDF preview depends on the Host's viewer; exports do not promise pixel-identical editor output.
 
-0.2.2 passed typecheck, 142 tests, the build and package checks, followed by bounded functional checks in the real DSH Web UI and macOS Desktop. Their scope is recorded by version in the [validation record](./docs/VALIDATION.md). Windows/Linux shortcuts were platform-emulated, **not tested on actual systems**. Complete native IME/clipboard behavior, long-term stability and specific third-party plugin combinations still need further validation.
+0.2.3 passed typecheck, 152 tests, the build and package checks, followed by bounded functional checks in the real DSH Web UI and macOS Desktop. Their scope is recorded by version in the [validation record](./docs/VALIDATION.md). Windows/Linux shortcuts were platform-emulated, **not tested on actual systems**. Complete native IME/clipboard behavior, long-term stability and specific third-party plugin combinations still need further validation.
 
 ## More
 
@@ -88,7 +88,7 @@ pnpm install --frozen-lockfile
 pnpm check
 pnpm pack:check
 pnpm pack --pack-destination artifacts
-dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.2.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.3.tgz
 ```
 
 Replace the final path with the actual file path. For Web, use `--profile web`.

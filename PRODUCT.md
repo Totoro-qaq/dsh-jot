@@ -36,15 +36,15 @@ Use DSH font and color tokens, font-size scaling, native sidebar row geometry, a
 
 Place the wide-view new-note control beside the Jot title in the top toolbar. Group folder management under Folder actions, and sorting/selection under List options. Narrow editor containers keep Format, Checklist, Find and Table as named, accessible icon controls. Reserve only horizontal space for macOS leading controls when the host sidebar collapses. The note-list separator starts below that toolbar. Compact mode uses the host's tab title, with one row of aligned content controls below it. Use native sidebar entries rather than adding a default composer button that crowds other plugins.
 
-## Current 0.2.2 boundary
+## Current 0.2.3 boundary
 
 Local durable notes, search, optional folders, rich editing with tables and a finite color palette, managed attachments, text capture, note-management actions, document export, native sidebar/global workbench, and gated agent tools. Cloud sync, real-time multi-person editing, version history, drawing/annotation, and a permanent floating-ball launcher remain outside this version. Source implementation, contract tests and complete native acceptance are separate claims.
 
 ## 功能清单
 
-整理日期：2026-10-03。当前实现基线：0.2.2，目标宿主 DSH 0.2.0-rc.2。
+整理日期：2026-10-03。当前实现基线：0.2.3，目标宿主 DSH 0.2.0-rc.2。
 
-勾选项表示当前源码已实现；未勾选项表示尚未实现。0.2.2 已完成类型检查、142 项测试和构建。0.2.0 的打包、真实 DSH Web UI 与 macOS Desktop 验收保留为历史记录；新版本的宿主验收单独记录。实际 Windows／Linux、完整原生中文输入与剪贴板仍需补充，实际验证范围见[验证记录](docs/VALIDATION.md)。
+勾选项表示当前源码已实现；未勾选项表示尚未实现。0.2.3 已完成类型检查、152 项测试和构建。0.2.0 的打包、真实 DSH Web UI 与 macOS Desktop 验收保留为历史记录；新版本的宿主验收单独记录。实际 Windows／Linux、完整原生中文输入与剪贴板仍需补充，实际验证范围见[验证记录](docs/VALIDATION.md)。
 
 ### 保持的产品约定
 
@@ -87,7 +87,7 @@ Local durable notes, search, optional folders, rich editing with tables and a fi
 
 ### 0.2.0 功能基础
 
-原优先补充清单已进入源码。以下功能在 0.2.2 中保留；0.2.0 的界面和原生键盘验收按版本保存在集成记录中。
+原优先补充清单已进入源码。以下功能在 0.2.3 中保留；0.2.0 的界面和原生键盘验收按版本保存在集成记录中。
 
 | 功能 | 当前实现 |
 | --- | --- |

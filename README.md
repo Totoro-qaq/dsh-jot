@@ -10,7 +10,7 @@
   中文 · <a href="./README.en.md">English</a> · <a href="./docs/GUIDE.zh-CN.md">使用指南</a> · <a href="./docs/VALIDATION.md">验证记录</a> · <a href="./LICENSE">MIT</a>
 </p>
 
-**0.2.2** · 验证宿主 **DeepSeek Harness 0.2.0-rc.2** · [更新记录](https://github.com/Totoro-qaq/dsh-jot/releases)
+**0.2.3** · 验证宿主 **DeepSeek Harness 0.2.0-rc.2** · [更新记录](https://github.com/Totoro-qaq/dsh-jot/releases)
 
 ![随记在真实 DSH Web UI 中的完整工作台：笔记列表、核对清单、表格、颜色和高亮](./assets/readme/workbench.png)
 
@@ -67,7 +67,7 @@ dsh plugin --profile web add dsh-jot
 
 附件默认单文件 20 MiB、全库 500 MiB。当前不提供云同步、多人实时协作、绘图或历史版本；PDF 预览依赖宿主查看器，导出也不保证与编辑器逐像素一致。
 
-0.2.2 已通过类型检查、142 项测试、构建与打包检查，并完成真实 DSH Web UI 和 macOS Desktop 的有限功能验收；范围按版本记录在[验证记录](./docs/VALIDATION.md)。Windows/Linux 快捷键做了平台模拟，尚未实机验收；完整原生输入法、剪贴板、长期稳定性和具体第三方插件组合仍需继续验证。
+0.2.3 已通过类型检查、152 项测试、构建与打包检查，并完成真实 DSH Web UI 和 macOS Desktop 的有限功能验收；范围按版本记录在[验证记录](./docs/VALIDATION.md)。Windows/Linux 快捷键做了平台模拟，尚未实机验收；完整原生输入法、剪贴板、长期稳定性和具体第三方插件组合仍需继续验证。
 
 ## 继续了解
 
@@ -88,7 +88,7 @@ pnpm install --frozen-lockfile
 pnpm check
 pnpm pack:check
 pnpm pack --pack-destination artifacts
-dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.2.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.3.tgz
 ```
 
 将最后一行替换为实际文件路径；Web 使用 `--profile web`。

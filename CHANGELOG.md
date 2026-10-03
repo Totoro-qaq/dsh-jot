@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 — 2026-10-03
+
+- Fix a Windows exclusive-file-open permission race while acquiring note and attachment locks. Transient Windows `EPERM` is retried within the existing deadline; persistent permission errors remain failures. Existing locks are never removed to acquire ownership.
+- Preserve lock metadata failure handling and the original concurrent-write/security checks.
+- Publish this patch as the recommended version following cross-platform source, build and package validation.
+
 ## 0.2.2 — 2026-10-03
 
 First public release of **Jot / 随记** for DeepSeek Harness. Earlier local iteration numbers do not represent prior npm releases.
