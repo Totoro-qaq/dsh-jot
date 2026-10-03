@@ -28,7 +28,14 @@ A colorful notebook identifies Jot. Actions use consistent icons; fonts, text sc
 
 ## Install and write your first note
 
-Install into the profile you use:
+**Publication status:** GitHub Release `0.2.3` provides a prebuilt package. npm currently has `0.2.2`; publishing `0.2.3` still needs the account's security-key verification. Use the fixed Release package in the meantime:
+
+```sh
+# Desktop; replace desktop with web for the Web UI
+dsh plugin --profile desktop add https://github.com/Totoro-qaq/dsh-jot/releases/latest/download/dsh-jot.tgz
+```
+
+Once npm 0.2.3 is published, install into the profile you use:
 
 ```sh
 # Desktop

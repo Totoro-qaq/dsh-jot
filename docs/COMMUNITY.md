@@ -4,6 +4,15 @@
 
 本页记录收录方式与提交材料；准备、提交和已收录是不同状态。规则核对日期：2026-10-03。
 
+| 入口 | 当前状态 |
+| --- | --- |
+| dsh-market / Awesome DSH Plugin | [PR #6500](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/6500) 已提交，等待检查和维护者审核 |
+| dshfind | 已设置公开仓库的 `dsh-plugin` topic，等待其定期同步；尚不宣称已收录 |
+| DSH Directory | [Issue #334](https://github.com/alexchenzl/dsh-plugin-directory/issues/334) 已提交，等待自动检查 |
+| DSH Plugin Store | 下方提供网站表单材料，由仓库作者自行提交 |
+
+0.2.3 Release 的预构建包已公开；npm 0.2.2 已发布，npm 0.2.3 仍待账号安全密钥验证。
+
 ## dsh-market / Awesome DSH Plugin
 
 市场读取 [Awesome DSH Plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 的目录，插件条目不应向 dsh-market 应用仓库提交。按[贡献指南](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)，只新增 `data/plugins/Totoro-qaq__dsh-jot.yml`：
@@ -48,7 +57,7 @@ GitHub 简介、topics、`package.json` 的 `dsh.bundle`、公开稳定 npm 版�
 - **Repository URL：** `https://github.com/Totoro-qaq/dsh-jot`
 - **One sentence on what it does：** `Jot adds human-editable notes, to-dos and lightweight documents to DeepSeek Harness, with folders, full-text search, rich text, resizable tables, attachments, exports and optional agent collaboration.`
 - **Category：** `UI & Themes`（笔记工作台属于功能界面增强；实际表单名称以网站当前选项为准）。
-- **Anything we should verify before listing：** `Version 0.2.2 was checked in the real DeepSeek Harness 0.2.0-rc.2 Web UI and macOS Desktop. Install with dsh plugin --profile web add dsh-jot (Desktop: --profile desktop). AI collaboration is off by default. PNG/JPEG/GIF/WebP preview is supported; PDF preview depends on the host viewer, and other attachments are downloadable. Windows/Linux shortcuts were platform-emulated, not validated on actual systems. See README.en.md and docs/VALIDATION.md for scope. MIT license.`
+- **Anything we should verify before listing：** `Version 0.2.3 fixes Windows lock acquisition and passed 152 tests across hosted Linux, Windows and macOS CI. Its unchanged interface was checked in the real DeepSeek Harness 0.2.0-rc.2 Web UI and macOS Desktop during 0.2.2 validation. Install the current prebuilt package with dsh plugin --profile web add https://github.com/Totoro-qaq/dsh-jot/releases/latest/download/dsh-jot.tgz (Desktop: --profile desktop). AI collaboration is off by default. PNG/JPEG/GIF/WebP preview is supported; PDF preview depends on the host viewer, and other attachments are downloadable. Windows/Linux shortcuts were platform-emulated, not validated on actual systems. See README.en.md and docs/VALIDATION.md for scope. MIT license.`
 - **Your email：** 可选，留空即可；不代填个人邮箱。
 
 这是人工审核的官网表单，当前不宣称已经提交或收录。
