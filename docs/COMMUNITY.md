@@ -11,7 +11,7 @@
 | DSH Directory | [Issue #334](https://github.com/alexchenzl/dsh-plugin-directory/issues/334) 已提交，等待自动检查 |
 | DSH Plugin Store | 下方提供网站表单材料，由仓库作者自行提交 |
 
-0.2.3 Release 的预构建包已公开；npm 0.2.2 已发布，npm 0.2.3 仍待账号安全密钥验证。
+0.2.3 Release 与 npm 0.2.3 均已公开，npm latest 指向 0.2.3；早期 npm 0.2.2 保留为历史版本。
 
 ## dsh-market / Awesome DSH Plugin
 
@@ -57,7 +57,7 @@ GitHub 简介、topics、`package.json` 的 `dsh.bundle`、公开稳定 npm 版�
 - **Repository URL：** `https://github.com/Totoro-qaq/dsh-jot`
 - **One sentence on what it does：** `Jot adds human-editable notes, to-dos and lightweight documents to DeepSeek Harness, with folders, full-text search, rich text, resizable tables, attachments, exports and optional agent collaboration.`
 - **Category：** `UI & Themes`（笔记工作台属于功能界面增强；实际表单名称以网站当前选项为准）。
-- **Anything we should verify before listing：** `Version 0.2.3 fixes Windows lock acquisition and passed 152 tests across hosted Linux, Windows and macOS CI. Its unchanged interface was checked in the real DeepSeek Harness 0.2.0-rc.2 Web UI and macOS Desktop during 0.2.2 validation. Install the current prebuilt package with dsh plugin --profile web add https://github.com/Totoro-qaq/dsh-jot/releases/latest/download/dsh-jot.tgz (Desktop: --profile desktop). AI collaboration is off by default. PNG/JPEG/GIF/WebP preview is supported; PDF preview depends on the host viewer, and other attachments are downloadable. Windows/Linux shortcuts were platform-emulated, not validated on actual systems. See README.en.md and docs/VALIDATION.md for scope. MIT license.`
+- **Anything we should verify before listing：** `Version 0.2.3 fixes Windows lock acquisition and passed 152 tests across hosted Linux, Windows and macOS CI. Its unchanged interface was checked in the real DeepSeek Harness 0.2.0-rc.2 Web UI and macOS Desktop during 0.2.2 validation. Install with dsh plugin --profile web add dsh-jot@0.2.3 (Desktop: --profile desktop), or use the current prebuilt Release asset. AI collaboration is off by default. PNG/JPEG/GIF/WebP preview is supported; PDF preview depends on the host viewer, and other attachments are downloadable. Windows/Linux shortcuts were platform-emulated, not validated on actual systems. See README.en.md and docs/VALIDATION.md for scope. MIT license.`
 - **Your email：** 可选，留空即可；不代填个人邮箱。
 
 这是人工审核的官网表单，当前不宣称已经提交或收录。
