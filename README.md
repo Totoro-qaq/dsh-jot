@@ -28,14 +28,7 @@
 
 ## 安装并写下第一条笔记
 
-**发布状态：** GitHub Release `0.2.3` 已提供预构建安装包，npm 当前公开版本为 `0.2.2`；`0.2.3` 的 npm 发布仍待账号安全密钥验证。建议先用修复版 Release：
-
-```sh
-# 桌面客户端；Web 将 desktop 换成 web
-dsh plugin --profile desktop add https://github.com/Totoro-qaq/dsh-jot/releases/latest/download/dsh-jot.tgz
-```
-
-npm 0.2.3 完成发布后，可安装到需要使用的 Profile：
+安装到需要使用的 Profile：
 
 ```sh
 # 桌面客户端
