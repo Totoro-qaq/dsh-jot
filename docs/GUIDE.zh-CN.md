@@ -4,9 +4,9 @@
 
 DSH 中由人管理的笔记与轻文档工作台。直接写段落、列表和待办，按需要允许 agent 一起维护。
 
-当前版本 **dsh-jot 0.2.2**，验证宿主为 **DeepSeek Harness 0.2.0-rc.2**。[GitHub](https://github.com/Totoro-qaq/dsh-jot) · [版本记录](https://github.com/Totoro-qaq/dsh-jot/releases) · [npm](https://www.npmjs.com/package/dsh-jot)
+当前版本 **dsh-jot 0.2.3**，验证宿主为 **DeepSeek Harness 0.2.0-rc.2**。[GitHub](https://github.com/Totoro-qaq/dsh-jot) · [版本记录](https://github.com/Totoro-qaq/dsh-jot/releases) · [npm](https://www.npmjs.com/package/dsh-jot)
 
-目标覆盖 macOS、Windows 和 Linux 的 Desktop／Web。0.2.2 已通过类型检查、142 项测试和构建，当前宿主验收与 0.2.0 的历史记录分开保存在[验证记录](VALIDATION.md)。Windows／Linux 快捷键做了浏览器平台模拟，真实操作系统验收尚待补齐。
+目标覆盖 macOS、Windows 和 Linux 的 Desktop／Web。0.2.3 已通过类型检查、152 项测试和构建，当前宿主验收与 0.2.0 的历史记录分开保存在[验证记录](VALIDATION.md)。Windows／Linux 快捷键做了浏览器平台模拟，真实操作系统验收尚待补齐。
 
 ## 已实现
 
@@ -69,7 +69,7 @@ pnpm pack --pack-destination artifacts
 将生成的 tarball 装到需要使用的 Profile：
 
 ```sh
-dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.2.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.3.tgz
 # Web 使用 --profile web
 ```
 

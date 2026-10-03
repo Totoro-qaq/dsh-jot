@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { acquireFileLock } from './file-lock.js'
 import {
   StoreError, boundedString, docFromText, docToText, onlyKeys, record,
   validateActor, validateId, validateRichDoc,
@@ -106,25 +107,12 @@ export class JotStore {
   private async lock(): Promise<() => Promise<void>> {
     try { await mkdir(this.directory, { recursive: true, mode: 0o700 }) }
     catch (cause) { throw new StoreError('PERSISTENCE_ERROR', 'Cannot create the notes directory', { cause }) }
-    const deadline = Date.now() + this.lockTimeoutMs
-    while (true) {
-      try {
-        const file = await open(this.lockPath, 'wx', 0o600)
-        try {
-          await file.writeFile(JSON.stringify({ pid: process.pid, createdAt: timestamp() }))
-        } catch (cause) {
-          await file.close()
-          await rm(this.lockPath, { force: true })
-          throw cause
-        }
-        await file.close()
-        return async () => { await rm(this.lockPath, { force: true }) }
-      } catch (cause) {
-        if (!isErrno(cause, 'EEXIST')) throw new StoreError('PERSISTENCE_ERROR', 'Cannot acquire the notes lock', { cause })
-        if (Date.now() >= deadline) throw new StoreError('LOCK_TIMEOUT', 'Notes are locked by another operation; inspect .jot.lock if its process has stopped')
-        await new Promise(resolveWait => setTimeout(resolveWait, 12))
-      }
-    }
+    return acquireFileLock({
+      path: this.lockPath, timeoutMs: this.lockTimeoutMs,
+      initialize: async file => { await file.writeFile(JSON.stringify({ pid: process.pid, createdAt: timestamp() })) },
+      persistenceError: cause => new StoreError('PERSISTENCE_ERROR', 'Cannot acquire the notes lock', { cause }),
+      timeoutError: () => new StoreError('LOCK_TIMEOUT', 'Notes are locked by another operation; inspect .jot.lock if its process has stopped'),
+    })
   }
 
   private async load(): Promise<{ state: JotState; previous: string | null }> {

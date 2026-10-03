@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import { link, lstat, mkdir, open, readdir, rename, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { acquireFileLock } from './file-lock.js'
 
 export const DEFAULT_ATTACHMENT_MAX_BYTES = 20 * 1_048_576
 export const DEFAULT_ATTACHMENT_TOTAL_BYTES = 500 * 1_048_576
@@ -234,20 +235,12 @@ export class AttachmentStore {
   private async lock(): Promise<() => Promise<void>> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 })
     await this.checkDirectory()
-    const deadline = Date.now() + this.lockTimeoutMs
-    while (true) {
-      try {
-        const file = await open(this.lockPath, 'wx', 0o600)
-        try { await file.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })); await file.sync() }
-        catch (cause) { await file.close(); await rm(this.lockPath, { force: true }); throw cause }
-        await file.close()
-        return async () => { await rm(this.lockPath, { force: true }) }
-      } catch (cause) {
-        if (!errno(cause, 'EEXIST')) throw new AttachmentError('ATTACHMENT_PERSISTENCE', 'Cannot lock attachment storage.', 500, { cause })
-        if (Date.now() >= deadline) throw new AttachmentError('ATTACHMENT_LOCKED', 'Attachment storage is busy.', 503)
-        await new Promise(resolveWait => setTimeout(resolveWait, 12))
-      }
-    }
+    return acquireFileLock({
+      path: this.lockPath, timeoutMs: this.lockTimeoutMs,
+      initialize: async file => { await file.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })); await file.sync() },
+      persistenceError: cause => new AttachmentError('ATTACHMENT_PERSISTENCE', 'Cannot lock attachment storage.', 500, { cause }),
+      timeoutError: () => new AttachmentError('ATTACHMENT_LOCKED', 'Attachment storage is busy.', 503),
+    })
   }
   private async writeSynced(path: string, bytes: Uint8Array): Promise<void> {
     const file = await open(path, 'wx', 0o600)
