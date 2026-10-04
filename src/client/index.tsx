@@ -1,9 +1,10 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useRef, useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-shortcuts/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -14,7 +15,7 @@ import { createHostEditorShortcuts } from './host-shortcuts.js'
 import { createHostAttachmentPreview } from './host-attachments.js'
 import { defaultJotApi } from './api.js'
 import { createAttachmentDialogHandoff } from './attachment-dialog.js'
-import { createCommandBus, registerJotCommands, type JotCommandRequest } from './commands.js'
+import { createCommandBus, registerJotCommands, type JotCommandRequest, type JotCompactRecipient } from './commands.js'
 
 export const name = 'dsh-jot-client'
 export const inject = ['slots', 'locale', 'layout', 'sidebarRightTabs', 'sidebarRight', 'uiSession', 'shortcuts']
@@ -61,19 +62,27 @@ export function apply(ctx: Context): void {
   })
   ctx.effect(() => () => hostEditorShortcuts.dispose(), 'dsh-jot: focused editor shortcuts')
   const commands = createCommandBus()
+  ctx.effect(() => () => commands.dispose(), 'dsh-jot: command lifetime')
   const wideCommand = () => commands.snapshotFor('wide')
-  const compactCommand = () => commands.snapshotFor('compact')
   const chinese = () => ctx.locale.getSnapshot().active.toLowerCase().startsWith('zh')
   /** Beside a visible Conversation commands use the sidebar tab; otherwise the full page. */
   const route = (action: JotCommandRequest['action'] | 'open', text?: string) => {
-    const besideConversation = ctx.sidebarRight?.mounted?.getSnapshot() !== undefined
+    const sessionId = ctx.sidebarRight?.mounted?.getSnapshot()
+    const besideConversation = sessionId !== undefined
       && ctx.layout.panelInfo.getSnapshot().activePanelId !== PANEL_ID
     let target: JotCommandRequest['target'] = 'wide'
+    let recipient: JotCompactRecipient | undefined
     if (besideConversation) {
-      try { ctx.sidebarRight.openTab(TAB_KIND); target = 'compact' }
+      try {
+        ctx.sidebarRight.openTab(TAB_KIND)
+        const tab = ctx.sidebarRight.active()
+        if (!tab || tab.kind !== TAB_KIND) throw new Error('Jot tab was not opened')
+        recipient = { sessionId, tabId: tab.id, signal: ctx.sidebarRight.tabDomain.occurrence(sessionId, tab).signal }
+        target = 'compact'
+      }
       catch { ctx.layout.selectPanel(PANEL_ID) }
     } else ctx.layout.selectPanel(PANEL_ID)
-    if (action !== 'open') commands.send({ action, target, ...text ? { text } : {} })
+    if (action !== 'open') commands.send({ action, target, ...recipient ? { recipient } : {}, ...text ? { text } : {} })
   }
   // Listed in DSH keyboard settings without default keys, so they never take a
   // binding from DSH, the system or another plugin; users choose their own.
@@ -91,15 +100,29 @@ export function apply(ctx: Context): void {
   function WideMemo() {
     const request = useSyncExternalStore(handoff.subscribe, handoff.getSnapshot, handoff.getSnapshot)
     const attachmentRequest = useSyncExternalStore(attachmentDialogs.subscribe, attachmentDialogs.getSnapshot, attachmentDialogs.getSnapshot)
-    const command = useSyncExternalStore(commands.subscribe, wideCommand, wideCommand)
+    const panel = useSyncExternalStore(listener => ctx.layout.panelInfo.subscribe(listener),
+      () => ctx.layout.panelInfo.getSnapshot().activePanelId, () => ctx.layout.panelInfo.getSnapshot().activePanelId)
+    const readCommand = () => panel === PANEL_ID ? wideCommand() : undefined
+    const command = useSyncExternalStore(commands.subscribe, readCommand, readCommand)
+    const claim = (revision: number) => ctx.layout.panelInfo.getSnapshot().activePanelId === PANEL_ID && commands.claim(revision, 'wide')
     return <JotApp mode="wide" locale={useLanguage()} chromeInset openNoteRequest={request} onNoteRequestHandled={handoff.acknowledge} onEditorFocus={hostEditorShortcuts.enter} onAttachmentPreview={widePreview}
       attachmentDialogRequest={attachmentRequest} onAttachmentDialogHandled={attachmentDialogs.acknowledge}
-      commandRequest={command} onCommandHandled={commands.acknowledge} />
+      commandRequest={command} onCommandClaim={claim} />
   }
-  function CompactMemo() {
-    const command = useSyncExternalStore(commands.subscribe, compactCommand, compactCommand)
+  function CompactMemo({ sessionId, useTabInfo }: { sessionId: string; useTabInfo: UseSidebarRightTabInfo }) {
+    const info = useTabInfo()
+    const visibleSession = useSyncExternalStore(listener => ctx.sidebarRight.mounted.subscribe(listener),
+      () => ctx.sidebarRight.mounted.getSnapshot(), () => ctx.sidebarRight.mounted.getSnapshot())
+    const currentInfo = useRef(info)
+    currentInfo.current = info
+    const recipient = useMemo(() => ({ sessionId, tabId: info.tab.id, signal: info.tab.signal }), [sessionId, info.tab.id, info.tab.signal])
+    const current = () => currentInfo.current.tab.visible && !recipient.signal.aborted
+      && ctx.sidebarRight.mounted.getSnapshot() === recipient.sessionId && ctx.sidebarRight.active()?.id === recipient.tabId
+    const readCommand = () => visibleSession === recipient.sessionId && current() ? commands.snapshotFor('compact', recipient) : undefined
+    const command = useSyncExternalStore(commands.subscribe, readCommand, readCommand)
+    const claim = (revision: number) => current() && commands.claim(revision, 'compact', recipient)
     return <JotApp mode="compact" locale={useLanguage()} onExpand={handoff.open} onEditorFocus={hostEditorShortcuts.enter} onAttachmentPreview={compactPreview}
-      commandRequest={command} onCommandHandled={commands.acknowledge} />
+      commandRequest={command} onCommandClaim={claim} />
   }
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID }, WideMemo))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 30, label: () => ctx.locale.getSnapshot().active.toLowerCase().startsWith('zh') ? '随记' : 'Jot' }, JotIcon))

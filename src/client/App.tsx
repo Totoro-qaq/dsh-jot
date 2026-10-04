@@ -36,6 +36,8 @@ export interface JotAppProps {
   onAttachmentDialogHandled?: (revision: number) => void
   /** Host keyboard commands (new note, capture) addressed to this panel. */
   commandRequest?: JotCommandRequest
+  /** Atomically acquire a still-current host recipient before any side effect. */
+  onCommandClaim?: (revision: number) => boolean
   onCommandHandled?: (revision: number) => void
 }
 
@@ -59,7 +61,7 @@ function Icon({ name }: { name: JotActionIconName }) {
   return <JotActionIcon name={name} />
 }
 
-export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, api = defaultJotApi, locale = 'zh', chromeInset = false, onEditorFocus, onAttachmentPreview, attachmentDialogRequest, onAttachmentDialogHandled, commandRequest, onCommandHandled }: JotAppProps) {
+export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, api = defaultJotApi, locale = 'zh', chromeInset = false, onEditorFocus, onAttachmentPreview, attachmentDialogRequest, onAttachmentDialogHandled, commandRequest, onCommandClaim, onCommandHandled }: JotAppProps) {
   const en = locale === 'en'
   const copy = (zh: string, english: string) => en ? english : zh
   const explain = (cause: unknown) => describeError(cause, locale)
@@ -557,6 +559,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       ready: Boolean(snapshot), busy, lastHandled: handledCommand.current,
       blocked: captureOpen || moveOpen || bulkDeleteOpen || Boolean(purgeConfirm) || Boolean(attachmentPreview),
     }, {
+      claim: onCommandClaim,
       acknowledge: onCommandHandled,
       run: request => { if (request.action === 'new') newNote(); else openCapture(request.text ?? '') },
     })

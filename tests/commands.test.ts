@@ -144,10 +144,11 @@ test('failed registration rolls back earlier rows and can be retried as one acti
 
 test('a panel command survives navigation until its owning panel acknowledges the same revision', () => {
   const bus = createCommandBus()
+  const recipient = { sessionId: 'conversation-a', tabId: 'jot-tab', signal: new AbortController().signal }
   let notifications = 0
   const off = bus.subscribe(() => { notifications++ })
-  bus.send({ action: 'capture', target: 'compact', text: '保留选中内容' })
-  const first = bus.snapshotFor('compact')!
+  bus.send({ action: 'capture', target: 'compact', recipient, text: '保留选中内容' })
+  const first = bus.snapshotFor('compact', recipient)!
   assert.equal(bus.snapshotFor('wide'), undefined)
   assert.equal(first.text, '保留选中内容')
   bus.send({ action: 'new', target: 'wide' })
@@ -158,7 +159,7 @@ test('a panel command survives navigation until its owning panel acknowledges th
   assert.equal(bus.getSnapshot(), undefined)
   assert.equal(notifications, 3)
   off()
-  bus.send({ action: 'new', target: 'compact' })
+  bus.send({ action: 'new', target: 'compact', recipient })
   assert.equal(notifications, 3)
 })
 
@@ -189,8 +190,9 @@ test('busy panel keeps a new-note command pending, then executes it once without
 
 test('pending commands wait for panel readiness and are discarded during modal ownership', () => {
   const bus = createCommandBus()
-  bus.send({ action: 'new', target: 'compact' })
-  const request = bus.snapshotFor('compact')!
+  const recipient = { sessionId: 'conversation-a', tabId: 'jot-tab', signal: new AbortController().signal }
+  bus.send({ action: 'new', target: 'compact', recipient })
+  const request = bus.snapshotFor('compact', recipient)!
   const callbacks = { acknowledge: bus.acknowledge, run() { assert.fail('not-ready or modal-owned command must not run') } }
   const lastHandled = consumeJotCommand(request, { ready: false, busy: false, blocked: false, lastHandled: 0 }, callbacks)
   assert.equal(lastHandled, 0)
@@ -199,4 +201,88 @@ test('pending commands wait for panel readiness and are discarded during modal o
   assert.equal(discarded, request.revision)
   assert.equal(bus.getSnapshot(), undefined)
   consumeJotCommand(request, { ready: true, busy: false, blocked: false, lastHandled: discarded }, callbacks)
+})
+
+for (const action of ['new', 'capture'] as const) {
+  test(`${action}: retained conversations with the same tab id cannot consume each other's command`, () => {
+    const bus = createCommandBus()
+    const zh = { sessionId: 'conversation-zh', tabId: 'same-tab-id', signal: new AbortController().signal }
+    const en = { sessionId: 'conversation-en', tabId: 'same-tab-id', signal: new AbortController().signal }
+    bus.send({ action, target: 'compact', recipient: zh, text: '选区快照' })
+    const request = bus.snapshotFor('compact', zh)!
+    assert.equal(bus.snapshotFor('compact', en), undefined)
+    assert.equal(bus.snapshotFor('compact'), undefined, 'an unscoped compact listener owns no request')
+    assert.equal(bus.claim(request.revision, 'compact', en), false, 'the older hidden conversation cannot win by running first')
+    let runs = 0
+    const state = { ready: true, busy: false, blocked: false, lastHandled: 0 }
+    const callbacks = { claim: (revision: number) => bus.claim(revision, 'compact', zh), run(received: typeof request) {
+      runs++; assert.equal(received.text, '选区快照')
+    } }
+    consumeJotCommand(request, state, callbacks)
+    consumeJotCommand(request, state, callbacks)
+    assert.equal(runs, 1, 'two effects retaining the same request perform one side effect')
+  })
+}
+
+test('two visible panes in one conversation still have exact tab recipients', () => {
+  const bus = createCommandBus()
+  const left = { sessionId: 'conversation-a', tabId: 'jot-left', signal: new AbortController().signal }
+  const right = { sessionId: 'conversation-a', tabId: 'jot-right', signal: new AbortController().signal }
+  bus.send({ action: 'capture', target: 'compact', recipient: right, text: 'Right pane' })
+  const request = bus.snapshotFor('compact', right)!
+  assert.equal(bus.snapshotFor('compact', left), undefined)
+  assert.equal(bus.claim(request.revision, 'compact', left), false)
+  assert.equal(bus.claim(request.revision, 'compact', right), true)
+})
+
+test('pending busy commands survive session switching without being transferred to another conversation', () => {
+  const bus = createCommandBus()
+  const recipient = { sessionId: 'conversation-a', tabId: 'jot-tab', signal: new AbortController().signal }
+  bus.send({ action: 'new', target: 'compact', recipient })
+  const request = bus.snapshotFor('compact', recipient)!
+  let currentSession = 'conversation-a'
+  let runs = 0
+  const callbacks = { claim: (revision: number) => currentSession === recipient.sessionId && bus.claim(revision, 'compact', recipient), run() { runs++ } }
+  assert.equal(consumeJotCommand(request, { ready: true, busy: true, blocked: false, lastHandled: 0 }, callbacks), 0)
+  currentSession = 'conversation-b'
+  assert.equal(consumeJotCommand(request, { ready: true, busy: false, blocked: false, lastHandled: 0 }, callbacks), 0)
+  assert.equal(bus.getSnapshot(), request)
+  currentSession = 'conversation-a'
+  assert.equal(consumeJotCommand(request, { ready: true, busy: false, blocked: false, lastHandled: 0 }, callbacks), request.revision)
+  assert.equal(runs, 1)
+})
+
+test('tab lifetime abort and plugin disposal retire pending work and remove subscriptions', () => {
+  const bus = createCommandBus()
+  const lifetime = new AbortController()
+  const recipient = { sessionId: 'conversation-a', tabId: 'restored-tab', signal: lifetime.signal }
+  let notifications = 0
+  bus.subscribe(() => { notifications++ })
+  bus.send({ action: 'capture', target: 'compact', recipient })
+  const stale = bus.getSnapshot()!
+  lifetime.abort()
+  assert.equal(bus.getSnapshot(), undefined)
+  assert.equal(bus.claim(stale.revision, 'compact', recipient), false)
+  const restored = { ...recipient, signal: new AbortController().signal }
+  bus.send({ action: 'new', target: 'compact', recipient: restored })
+  assert.equal(bus.snapshotFor('compact', recipient), undefined)
+  assert.ok(bus.snapshotFor('compact', restored))
+  bus.dispose()
+  const disposedNotifications = notifications
+  bus.send({ action: 'new', target: 'wide' })
+  assert.equal(bus.getSnapshot(), undefined)
+  assert.equal(notifications, disposedNotifications)
+  assert.equal(bus.claim(stale.revision, 'compact', restored), false)
+})
+
+test('a superseded tab lifetime cannot clear a new request owned by the restored occurrence', () => {
+  const bus = createCommandBus()
+  const old = new AbortController()
+  const recipient = { sessionId: 'conversation-a', tabId: 'restored-tab', signal: old.signal }
+  bus.send({ action: 'new', target: 'compact', recipient })
+  const restored = { ...recipient, signal: new AbortController().signal }
+  bus.send({ action: 'capture', target: 'compact', recipient: restored })
+  const current = bus.snapshotFor('compact', restored)
+  old.abort()
+  assert.equal(bus.snapshotFor('compact', restored), current)
 })

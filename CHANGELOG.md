@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.5 — 2026-10-04
+## 0.2.5 — 2026-10-05
 
 ### Fixed
 
@@ -38,11 +38,12 @@
 - New product mark: the bookmark rises above the cover and the page carries a check, keeping it distinct from file icons at 16px. New capture, rename, restore, sort, sidebar and AI icons; find uses up/down arrows. `pnpm icons` regenerates `assets/icons`, and a test keeps them in sync.
 - Tables align with body text; their controls use a narrower 20px band.
 - “Open Jot”, “New note” and “Capture selected text” are registered as DSH keyboard commands without default keys.
+- Bind commands to the current session, tab and lifetime before an atomic claim, so retained sidebars cannot create duplicate notes or capture dialogs.
 - Use the current public DSH shortcut registrations so all three commands appear in keyboard settings and retain user bindings. Commands respect dialogs; selected text is captured before navigation, and New runs after the target editor mounts.
 - Declare compatibility with DSH 0.2.0-rc.2 and 0.2.1-alpha.1, including their Cordis and Schemastery versions. Development DSH dependencies now use 0.2.1-alpha.1.
 - The library poll uses an ETag: unchanged libraries return 304, the client skips re-rendering, and polling pauses in hidden windows. The Host also reuses parsed state while the file on disk is unchanged.
 
-Local `pnpm check` passed with all **246 tests**; build and package checks passed during prepack. Official DSH **0.2.1-alpha.1 Web** checks cover keyboard settings/bindings, dark colors, table controls, consecutive undo/redo across saves, column-drag cancellation and automatic fitting. The final functional candidate also passed bounded native **0.2.0-rc.2 Desktop** keyboard, dark-color, saved table-history, physical resizing and Auto fit checks. Native Escape-during-resize remains unverified. A subsequent CSS-only candidate left-aligns the wide document; it is installed with compiled hashes verified and notes/settings/bindings preserved, while its layout checks and new screenshots are pending. See the [validation record](./docs/VALIDATION.md) for candidate-specific evidence.
+Local `pnpm check` passed all **257 tests**, typecheck and build; package checks passed. Actual official **0.2.1-alpha.1 Web** and **0.2.0-rc.2 macOS Desktop** checks cover shortcut settings/bindings, dark appearance, table controls/history, physical resizing and Auto fit. The final runtime also verified single-consumer commands across retained Web conversations and native keyboard actions, plus left-aligned native fullscreen layout. Four bilingual README images were retaken in the final real Host. Native Escape-during-resize and Windows/Linux UI remain unverified; see the [validation record](./docs/VALIDATION.md).
 
 ## 0.2.4 — 2026-10-04
 

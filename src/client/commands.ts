@@ -58,22 +58,31 @@ export function registerJotCommands(
 }
 
 /** A host keyboard command addressed to one Jot panel. */
+export interface JotCompactRecipient {
+  sessionId: string
+  tabId: string
+  /** The host's occurrence lifetime; restoring a closed tab mints a new signal. */
+  signal: AbortSignal
+}
 export interface JotCommandRequest {
   action: 'new' | 'capture'
   target: 'wide' | 'compact'
   revision: number
   /** Text selected when the command ran, captured before any navigation. */
   text?: string
+  recipient?: JotCompactRecipient
 }
 
 /** Busy operations defer the request; modal ownership explicitly discards it. */
 export function consumeJotCommand(request: JotCommandRequest | undefined, state: {
   ready: boolean; busy: boolean; blocked: boolean; lastHandled: number
 }, callbacks: {
+  claim?: (revision: number) => boolean
   acknowledge?: (revision: number) => void; run: (request: JotCommandRequest) => void
 }): number {
   if (!request || !state.ready || request.revision <= state.lastHandled) return state.lastHandled
   if (state.busy && !state.blocked) return state.lastHandled
+  if (callbacks.claim && !callbacks.claim(request.revision)) return state.lastHandled
   callbacks.acknowledge?.(request.revision)
   if (!state.blocked) callbacks.run(request)
   return request.revision
@@ -87,13 +96,49 @@ export function createCommandBus() {
   let revision = 0
   let pending: JotCommandRequest | undefined
   const listeners = new Set<() => void>()
+  let disposed = false
+  let releaseLifetime: (() => void) | undefined
   const publish = () => { for (const listener of listeners) listener() }
+  const matches = (target: JotCommandRequest['target'], recipient?: JotCompactRecipient) => pending?.target === target
+    && (target === 'wide' || recipient !== undefined && pending.recipient?.sessionId === recipient.sessionId
+      && pending.recipient.tabId === recipient.tabId && pending.recipient.signal === recipient.signal && !recipient.signal.aborted)
+  const clear = () => {
+    releaseLifetime?.(); releaseLifetime = undefined
+    pending = undefined; publish()
+  }
   return {
-    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
+    subscribe(listener: () => void) {
+      if (disposed) return () => {}
+      listeners.add(listener); return () => { listeners.delete(listener) }
+    },
     getSnapshot: () => pending,
     /** Requests for the other panel are invisible to this one. */
-    snapshotFor: (target: JotCommandRequest['target']) => pending?.target === target ? pending : undefined,
-    send(request: Omit<JotCommandRequest, 'revision'>) { pending = { ...request, revision: ++revision }; publish() },
-    acknowledge(answered: number) { if (pending?.revision === answered) { pending = undefined; publish() } },
+    snapshotFor: (target: JotCommandRequest['target'], recipient?: JotCompactRecipient) => matches(target, recipient) ? pending : undefined,
+    send(request: Omit<JotCommandRequest, 'revision'>) {
+      if (disposed) return
+      if (request.target === 'compact' && (!request.recipient || request.recipient.signal.aborted)) return
+      releaseLifetime?.(); releaseLifetime = undefined
+      pending = { ...request, revision: ++revision }
+      if (request.recipient) {
+        const signal = request.recipient.signal
+        const abort = () => { if (pending?.recipient?.signal === signal) clear() }
+        signal.addEventListener('abort', abort, { once: true })
+        releaseLifetime = () => signal.removeEventListener('abort', abort)
+      }
+      publish()
+    },
+    /** Atomic ownership: stale React effects may hold a request already consumed elsewhere. */
+    claim(answered: number, target: JotCommandRequest['target'], recipient?: JotCompactRecipient): boolean {
+      if (disposed || pending?.revision !== answered || !matches(target, recipient)) return false
+      clear()
+      return true
+    },
+    acknowledge(answered: number) { if (pending?.revision === answered) clear() },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      clear()
+      listeners.clear()
+    },
   }
 }
