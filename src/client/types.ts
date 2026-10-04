@@ -32,6 +32,7 @@ export interface AttachmentInfo {
   id: string; name: string; mimeType: string; size: number; createdAt: string
   kind: 'image' | 'pdf' | 'file'; url: string; downloadUrl: string
 }
+export interface AttachmentCapabilities { nativeOpen: boolean }
 export type ExportFormat = 'txt' | 'md' | 'pdf' | 'docx'
 export interface NoteDownload { blob: Blob; filename: string }
 
@@ -49,6 +50,9 @@ export interface JotApi {
   setAgentEnabled(agentEnabled: boolean): Promise<{ agentEnabled: boolean }>
   uploadAttachment(file: File): Promise<AttachmentInfo>
   getAttachment(id: string): Promise<AttachmentInfo>
+  getAttachmentCapabilities?(): Promise<AttachmentCapabilities>
+  prepareAttachmentPreview?(id: string, options?: { signal?: AbortSignal }): Promise<{ path: string }>
+  openAttachment?(id: string, options?: { signal?: AbortSignal }): Promise<void>
   exportNote(input: { title: string; content: RichDoc }, format: ExportFormat): Promise<NoteDownload>
 }
 

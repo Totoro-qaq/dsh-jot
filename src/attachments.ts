@@ -13,6 +13,7 @@ const MAX_MANIFEST_BYTES = 2 * 1_048_576
 const INLINE_IMAGES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 const MAX_IMAGE_PIXELS = 40_000_000
 const MAX_IMAGE_DIMENSION = 10_000
+const MAX_PREVIEW_FILENAME_BYTES = 240
 
 export interface AttachmentInfo {
   id: string
@@ -69,6 +70,29 @@ export function validateAttachmentName(value: unknown): string {
     || value === '.' || value === '..') invalid('Use a plain file name of at most 200 characters.')
   try { encodeURIComponent(value) } catch { invalid('The attachment name contains invalid text.') }
   return value
+}
+/** Native preview copies need a portable basename without changing the stored upload name. */
+function previewFilename(name: string): string {
+  let safe = name.replace(/[<>:"|?*]/gu, '_').trim().replace(/[. ]+$/u, '') || 'attachment'
+  const deviceStem = safe.split('.')[0]!.trimEnd()
+  if (/^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$|clock\$)$/iu.test(deviceStem)) safe = `_${safe}`
+  if (Buffer.byteLength(safe, 'utf8') <= MAX_PREVIEW_FILENAME_BYTES) return safe
+  const cut = (value: string, maximum: number): string => {
+    let result = '', size = 0
+    for (const character of value) {
+      size += Buffer.byteLength(character, 'utf8')
+      if (size > maximum) break
+      result += character
+    }
+    return result
+  }
+  const dot = safe.lastIndexOf('.')
+  const extension = dot > 0 ? safe.slice(dot) : ''
+  // Keep normal extensions intact even when the human-readable stem is long.
+  if (Buffer.byteLength(extension, 'utf8') < MAX_PREVIEW_FILENAME_BYTES) {
+    return (cut(dot > 0 ? safe.slice(0, dot) : safe, MAX_PREVIEW_FILENAME_BYTES - Buffer.byteLength(extension, 'utf8')) + extension).replace(/[. ]+$/u, '')
+  }
+  return cut(safe, MAX_PREVIEW_FILENAME_BYTES).replace(/[. ]+$/u, '')
 }
 function declaredMime(value: unknown): string {
   if (value === undefined || value === '') return 'application/octet-stream'
@@ -245,6 +269,94 @@ export class AttachmentStore {
   private async writeSynced(path: string, bytes: Uint8Array): Promise<void> {
     const file = await open(path, 'wx', 0o600)
     try { await file.writeFile(bytes); await file.sync() } finally { await file.close() }
+  }
+
+  private async previewLock(): Promise<() => Promise<void>> {
+    await this.checkDirectory()
+    const path = join(this.directory, '.preview.lock')
+    try {
+      const existing = await lstat(path)
+      if (!existing.isFile() || existing.isSymbolicLink() || existing.nlink !== 1) corrupt('The attachment preview lock is not a plain managed file.')
+    } catch (cause) { if (!errno(cause, 'ENOENT')) throw cause }
+    return acquireFileLock({
+      path, timeoutMs: this.lockTimeoutMs,
+      initialize: async file => { await file.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })); await file.sync() },
+      persistenceError: cause => new AttachmentError('ATTACHMENT_PERSISTENCE', 'Cannot lock attachment previews.', 500, { cause }),
+      timeoutError: () => new AttachmentError('ATTACHMENT_LOCKED', 'Attachment previews are busy.', 503),
+    })
+  }
+
+  private async previewDirectory(path: string): Promise<{ ino: number; dev: number }> {
+    try { await mkdir(path, { mode: 0o700 }) }
+    catch (cause) { if (!errno(cause, 'EEXIST')) throw cause }
+    const entry = await lstat(path)
+    if (!entry.isDirectory() || entry.isSymbolicLink()) corrupt('The attachment preview directory is not a plain directory.')
+    if (process.platform !== 'win32' && (entry.mode & 0o077) !== 0) corrupt('The attachment preview directory is not private.')
+    return { ino: entry.ino, dev: entry.dev }
+  }
+
+  /**
+   * Project verified immutable bytes into a private native-file cache. External
+   * applications may edit this copy; a later preview restores the upload bytes.
+   * Only an attachment identifier can select the source or destination.
+   */
+  async previewFile(id: string): Promise<{ attachment: AttachmentInfo; path: string }> {
+    const { attachment, bytes } = await this.content(id)
+    const unlock = await this.previewLock()
+    const root = join(this.directory, '.preview')
+    const directory = join(root, attachment.id)
+    const path = join(directory, previewFilename(attachment.name))
+    const temporary = join(directory, `.preview-${randomBytes(16).toString('hex')}.tmp`)
+    let temporaryCreated = false
+    let checkDirectories: (() => Promise<void>) | undefined
+    try {
+      const rootIdentity = await this.previewDirectory(root)
+      const directoryIdentity = await this.previewDirectory(directory)
+      checkDirectories = async () => {
+        await this.checkDirectory()
+        for (const [managed, identity] of [[root, rootIdentity], [directory, directoryIdentity]] as const) {
+          const current = await lstat(managed)
+          if (!current.isDirectory() || current.isSymbolicLink() || current.ino !== identity.ino || current.dev !== identity.dev) {
+            corrupt('The attachment preview directory changed during preparation.')
+          }
+        }
+      }
+      await checkDirectories()
+      try {
+        const existing = await lstat(path)
+        if (!existing.isFile() || existing.isSymbolicLink() || existing.nlink !== 1) corrupt('The attachment preview is not a plain managed file.')
+        if (existing.size <= bytes.length && (process.platform === 'win32' || (existing.mode & 0o077) === 0)) {
+          const cached = await this.readManaged(path, bytes.length)
+          if (cached.length === bytes.length && sha256(cached) === sha256(bytes)) {
+            await checkDirectories()
+            return { attachment, path }
+          }
+        }
+      } catch (cause) { if (!errno(cause, 'ENOENT')) throw cause }
+      await checkDirectories()
+      // Exclusive creation and rename publish one complete independent copy;
+      // hardlinking the immutable source would allow native edits to corrupt it.
+      const file = await open(temporary, 'wx', 0o600)
+      temporaryCreated = true
+      try { await file.writeFile(bytes); await file.sync() } finally { await file.close() }
+      await checkDirectories()
+      // Rename replaces the entry itself and never follows a final symlink.
+      await rename(temporary, path)
+      temporaryCreated = false
+      const published = await this.readManaged(path, bytes.length)
+      if (published.length !== bytes.length || sha256(published) !== sha256(bytes)) corrupt('The attachment preview changed during preparation.')
+      await checkDirectories()
+      return { attachment, path }
+    } catch (cause) {
+      if (cause instanceof AttachmentError) throw cause
+      throw new AttachmentError('ATTACHMENT_PERSISTENCE', 'The attachment preview could not be prepared.', 500, { cause })
+    } finally {
+      if (temporaryCreated) {
+        // A replaced cache parent is no longer ours to clean up through.
+        await (async () => { await checkDirectories?.(); await rm(temporary, { force: true }) })().catch(() => {})
+      }
+      await unlock()
+    }
   }
 
   async upload(input: { name: string; mimeType?: string; bytes: Uint8Array }): Promise<AttachmentInfo> {

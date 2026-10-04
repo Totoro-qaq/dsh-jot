@@ -2,6 +2,23 @@
 
 Dates: 2026-10-02 and 2026-10-03 (Asia/Shanghai).
 
+## Unreleased — official attachment previews and application opening
+
+Verified 2026-10-04 on macOS, using Node 22.23.1 for source checks and the official DSH 0.2.0-rc.2 bundled runtime for an isolated Web Host. Typecheck, all **197 tests**, build, package-factory checks and `git diff --check` passed. The 45 additional behavioral checks cover private file projection, Windows-safe names, independent copies, tampered bytes and links, authenticated POST-only actions, cancellation and timeouts, session/panel changes and fallback delivery across unmounts. This is a local development build, not a new npm release or cross-platform CI run.
+
+The new Host used a fresh temporary DSH Home with public fixtures only; telemetry and LLM session-title generation were disabled. No provider login or model request was made. Installed Host/Client bytes and the Client served by the official Web Host matched the build. The existing test Desktop and ordinary DSH Home were left alone.
+
+Observed interactions in the official Web UI:
+
+- Without a selected Conversation, the attachment dialog retained downloads and showed the default-application button when the Host reported desktop support. Clicking the public TXT fixture opened its verified copy in macOS TextEdit; its actual window and text were observed, then that test window was closed without editing it.
+- From the full notes workbench with a selected Conversation, clicking CSV returned to that Conversation and opened the official spreadsheet viewer. The public three-column content rendered, and the official opener identified Numbers as the default application.
+- Clicking DOCX opened the official Office-to-PDF viewer with selectable public document text and its zoom controls. The Host reported one missing font through its own warning. The associated application button identified Microsoft Word; Word itself was not launched in this check.
+- PDF displayed in the official PDF viewer. From the compact Jot tab, clicking TXT opened the official text viewer in that same Conversation and retained the Jot and earlier document tabs.
+
+The open browser emitted scope/session-release and cancelled-inspection errors while the isolated Host was stopped for the build replacement. After reloading the restarted Host, the attachment interactions above produced no later console errors in the captured log. This does not establish error-free Host restarts.
+
+Default application opening uses the official cross-platform native library; it opens a private copy on the serving Host and does not save edits back into Jot. Actual Windows/Linux desktop launches, remote-client system opening and unsupported-renderer UI failure states remain unverified. The source tests cover their capability, path, cancellation and fallback contracts without launching applications.
+
 ## 0.2.3 — Windows lock acquisition compatibility
 
 The first public 0.2.2 source CI passed all 142 tests on Linux Node 22.19.0 / 24 and Windows/macOS Node 24. A second tag-triggered run exposed an intermittent Windows exclusive-open `EPERM` during the unchanged 12-concurrent-note test. The other tests and three other platform jobs passed. This demonstrates why one green run was not a guarantee against this timing window.

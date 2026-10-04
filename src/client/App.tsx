@@ -16,6 +16,7 @@ import { jotStyles } from './styles.js'
 import { NoteList } from './NoteList.js'
 import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note-handoff.js'
 import type { AttachmentInfo, ExportFormat, JotApi, JotLocale, JotState, Note, RichNode } from './types.js'
+import type { AttachmentDialogRequest } from './attachment-dialog.js'
 
 export interface JotAppProps {
   mode: 'compact' | 'wide'
@@ -26,6 +27,10 @@ export interface JotAppProps {
   locale?: JotLocale
   chromeInset?: boolean
   onEditorFocus?: (owner: object) => () => void
+  /** false requests the local dialog; undefined retires a superseded gesture. */
+  onAttachmentPreview?: (attachmentId: string, options?: { signal?: AbortSignal }) => Promise<boolean | undefined>
+  attachmentDialogRequest?: AttachmentDialogRequest
+  onAttachmentDialogHandled?: (revision: number) => void
 }
 
 type SavePhase = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict'
@@ -38,7 +43,7 @@ function Icon({ name }: { name: 'search' | 'new' | 'expand' | 'back' | 'pin' | '
   return <JotActionIcon name={names[name]} />
 }
 
-export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, api = defaultJotApi, locale = 'zh', chromeInset = false, onEditorFocus }: JotAppProps) {
+export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, api = defaultJotApi, locale = 'zh', chromeInset = false, onEditorFocus, onAttachmentPreview, attachmentDialogRequest, onAttachmentDialogHandled }: JotAppProps) {
   const en = locale === 'en'
   const copy = (zh: string, english: string) => en ? english : zh
   const [snapshot, setSnapshot] = useState<JotState | null>(null)
@@ -91,6 +96,19 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const [moveFolder, setMoveFolder] = useState('')
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentInfo | null>(null)
+  const attachmentRequest = useRef<AbortController | null>(null)
+  useEffect(() => () => { if (mode === 'compact') attachmentRequest.current?.abort() }, [mode])
+  useEffect(() => {
+    if (!attachmentDialogRequest) return
+    let active = true
+    const { attachmentId, revision } = attachmentDialogRequest
+    void api.getAttachment(attachmentId).then(attachment => {
+      if (active) { setAttachmentPreview(attachment); onAttachmentDialogHandled?.(revision) }
+    }, cause => {
+      if (active) { setError(cause instanceof Error ? cause.message : String(cause)); onAttachmentDialogHandled?.(revision) }
+    })
+    return () => { active = false }
+  }, [attachmentDialogRequest, onAttachmentDialogHandled, api])
   const [uploadBusy, setUploadBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState('')
@@ -513,7 +531,17 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     finally { uploadTarget.current = null; if (mounted.current) setUploadBusy(false) }
   }
 
-  const previewAttachment = (id: string) => void perform(async () => setAttachmentPreview(await api.getAttachment(id)))
+  const previewAttachment = (id: string) => void perform(async () => {
+    attachmentRequest.current?.abort()
+    const controller = new AbortController()
+    attachmentRequest.current = controller
+    // The Host owns navigation after this handoff, including a wide panel's
+    // intentional unmount when returning to the Conversation.
+    const opened = onAttachmentPreview ? await onAttachmentPreview(id, { signal: controller.signal }) : false
+    if (opened !== false || !mounted.current || controller.signal.aborted) return
+    const attachment = await api.getAttachment(id)
+    if (mounted.current && !controller.signal.aborted) setAttachmentPreview(attachment)
+  })
 
   const selectedNote = snapshot?.notes.find(note => note.id === draft?.noteId)
   const recoveries = draft ? recoveryDrafts(draft.noteId) : []
@@ -811,7 +839,8 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       <p>{copy(`把所选 ${selectedIds.size} 条笔记移到回收站？之后可以恢复。`, `Move ${selectedIds.size} notes to Trash? They can be restored.`)}</p>
       <div className="jot-modal-footer"><button type="button" className="jot-btn" disabled={busy} onClick={deleteSelected}>{copy('移到回收站', 'Move to Trash')}</button></div>
     </Modal>}
-    {attachmentPreview && <AttachmentPreview attachment={attachmentPreview} onClose={() => setAttachmentPreview(null)} locale={locale} />}
+    {attachmentPreview && <AttachmentPreview attachment={attachmentPreview} onClose={() => setAttachmentPreview(null)} locale={locale}
+      getCapabilities={api.getAttachmentCapabilities} onOpenNative={api.openAttachment ? signal => api.openAttachment!(attachmentPreview.id, { signal }) : undefined} />}
   </div>
 }
 

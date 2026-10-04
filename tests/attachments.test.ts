@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { createServer, request as nodeRequest, type IncomingMessage } from 'node:http'
-import { link, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { link, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { AttachmentError, AttachmentStore, attachmentMedia, attachmentUrl } from '../src/attachments.js'
 import { createJotHandler } from '../src/http.js'
@@ -116,6 +116,164 @@ test('a held attachment lock times out without stealing or removing it', async t
   await writeFile(store.lockPath, 'owned by another writer')
   await assert.rejects(store.upload({ name: 'next.txt', bytes: Buffer.from('next') }), (error: unknown) => error instanceof AttachmentError && error.code === 'ATTACHMENT_LOCKED')
   assert.equal(await readFile(store.lockPath, 'utf8'), 'owned by another writer')
+})
+
+test('native preview copies retain names and bytes without sharing the immutable blob inode', async t => {
+  const store = new AttachmentStore({ directory: await directory(t) })
+  const attachment = await store.upload({ name: '会议记录.docx', bytes: Buffer.from('original Office bytes') })
+  const projection = await store.previewFile(attachment.id)
+  assert.deepEqual(projection.attachment, attachment)
+  assert.equal(projection.path, join(store.directory, '.preview', attachment.id, attachment.name))
+  assert.deepEqual(await readFile(projection.path), (await store.content(attachment.id)).bytes)
+  const original = await lstat(join(store.directory, `${attachment.id}.blob`))
+  const copy = await lstat(projection.path)
+  assert.equal(original.nlink, 1)
+  assert.equal(copy.nlink, 1)
+  assert.notEqual(copy.ino, original.ino)
+  if (process.platform !== 'win32') {
+    assert.equal(copy.mode & 0o077, 0)
+    assert.equal((await lstat(dirname(projection.path))).mode & 0o077, 0)
+    assert.equal((await lstat(join(store.directory, '.preview'))).mode & 0o077, 0)
+  }
+  const restarted = new AttachmentStore({ directory: dirname(store.directory) })
+  assert.equal((await restarted.previewFile(attachment.id)).path, projection.path)
+  assert.deepEqual((await readdir(store.directory)).filter(name => name.endsWith('.lock')), [])
+  assert.deepEqual((await readdir(dirname(projection.path))).filter(name => name.endsWith('.tmp')), [])
+})
+
+test('native preview restores an externally edited copy while preserving the original', async t => {
+  const store = new AttachmentStore({ directory: await directory(t) })
+  const bytes = Buffer.from('original content')
+  const attachment = await store.upload({ name: 'draft.txt', bytes })
+  const { path } = await store.previewFile(attachment.id)
+  for (const changed of [Buffer.alloc(bytes.length, 1), Buffer.from('short'), Buffer.alloc(bytes.length + 1024, 2)]) {
+    await writeFile(path, changed)
+    assert.equal((await store.previewFile(attachment.id)).path, path)
+    assert.deepEqual(await readFile(path), bytes)
+    assert.deepEqual((await store.content(attachment.id)).bytes, bytes)
+  }
+})
+
+test('native preview validates the source on every call even when a verified copy exists', async t => {
+  const store = new AttachmentStore({ directory: await directory(t) })
+  const attachment = await store.upload({ name: 'draft.txt', bytes: Buffer.from('original') })
+  const { path } = await store.previewFile(attachment.id)
+  await writeFile(join(store.directory, `${attachment.id}.blob`), 'tampered')
+  await assert.rejects(store.previewFile(attachment.id), (error: unknown) => error instanceof AttachmentError && error.code === 'CORRUPT_ATTACHMENTS')
+  assert.equal(await readFile(path, 'utf8'), 'original')
+  await assert.rejects(store.previewFile('../escape'), (error: unknown) => error instanceof AttachmentError && error.status === 400)
+  await assert.rejects(store.previewFile('f'.repeat(32)), (error: unknown) => error instanceof AttachmentError && error.status === 404)
+})
+
+test('native preview refuses linked source files without creating a cache', async t => {
+  for (const kind of ['symlink', 'hardlink'] as const) {
+    const root = await directory(t)
+    const store = new AttachmentStore({ directory: root })
+    const bytes = Buffer.from('original')
+    const attachment = await store.upload({ name: 'draft.txt', bytes })
+    const outside = join(root, 'outside.txt')
+    await writeFile(outside, bytes)
+    const blob = join(store.directory, `${attachment.id}.blob`)
+    await rm(blob)
+    if (kind === 'symlink') await symlink(outside, blob)
+    else await link(outside, blob)
+    await assert.rejects(store.previewFile(attachment.id), AttachmentError)
+    assert.ok(!(await readdir(store.directory)).includes('.preview'))
+    assert.equal(await readFile(outside, 'utf8'), 'original')
+  }
+})
+
+test('native preview refuses symlink cache layers and never writes outside managed storage', async t => {
+  for (const layer of ['root', 'attachment'] as const) {
+    const root = await directory(t)
+    const store = new AttachmentStore({ directory: root })
+    const attachment = await store.upload({ name: 'draft.txt', bytes: Buffer.from('original') })
+    const outside = join(root, 'outside')
+    await mkdir(outside)
+    const cacheRoot = join(store.directory, '.preview')
+    if (layer === 'attachment') await mkdir(cacheRoot, { mode: 0o700 })
+    await symlink(outside, layer === 'root' ? cacheRoot : join(cacheRoot, attachment.id), 'junction')
+    await assert.rejects(store.previewFile(attachment.id), (error: unknown) => error instanceof AttachmentError && error.code === 'CORRUPT_ATTACHMENTS')
+    assert.deepEqual(await readdir(outside), [])
+    assert.ok(!(await readdir(store.directory)).includes('.preview.lock'))
+  }
+})
+
+test('native preview rejects cache symlinks, hardlinks and directories instead of replacing them', async t => {
+  for (const kind of ['symlink', 'hardlink', 'directory'] as const) {
+    const root = await directory(t)
+    const store = new AttachmentStore({ directory: root })
+    const attachment = await store.upload({ name: 'draft.txt', bytes: Buffer.from('original') })
+    const { path } = await store.previewFile(attachment.id)
+    const outside = join(root, 'outside.txt')
+    await writeFile(outside, 'private outside bytes')
+    await rm(path)
+    if (kind === 'symlink') await symlink(outside, path)
+    else if (kind === 'hardlink') await link(outside, path)
+    else await mkdir(path)
+    await assert.rejects(store.previewFile(attachment.id), (error: unknown) => error instanceof AttachmentError && error.code === 'CORRUPT_ATTACHMENTS')
+    assert.equal(await readFile(outside, 'utf8'), 'private outside bytes')
+    const remaining = await lstat(path)
+    assert.ok(kind === 'symlink' ? remaining.isSymbolicLink() : kind === 'hardlink' ? remaining.nlink === 2 : remaining.isDirectory())
+    assert.deepEqual((await readdir(dirname(path))).filter(name => name.endsWith('.tmp')), [])
+  }
+})
+
+test('native preview publication is shared across concurrent store instances', async t => {
+  const root = await directory(t)
+  const first = new AttachmentStore({ directory: root })
+  const second = new AttachmentStore({ directory: root })
+  const bytes = Buffer.alloc(128 * 1024, 42)
+  const attachment = await first.upload({ name: 'draft.docx', bytes })
+  const copies = await Promise.all(Array.from({ length: 12 }, (_, index) => (index % 2 === 0 ? first : second).previewFile(attachment.id)))
+  assert.equal(new Set(copies.map(copy => copy.path)).size, 1)
+  assert.deepEqual(await readFile(copies[0]!.path), bytes)
+  assert.deepEqual(await readdir(dirname(copies[0]!.path)), ['draft.docx'])
+  assert.equal((await lstat(join(first.directory, `${attachment.id}.blob`))).nlink, 1)
+  assert.deepEqual((await readdir(first.directory)).filter(name => name.endsWith('.lock')), [])
+})
+
+test('native preview names work across Windows and POSIX while preserving useful extensions', async t => {
+  const store = new AttachmentStore({ directory: await directory(t) })
+  for (const [name, expected] of [
+    ['CON.docx', '_CON.docx'], ['CON .docx', '_CON .docx'], ['lpt1.xlsx', '_lpt1.xlsx'], ['COM¹.txt', '_COM¹.txt'], ['NUL', '_NUL'],
+    ['CONIN$.txt', '_CONIN$.txt'], [' report:2026?*.docx.  ', 'report_2026__.docx'], ['... ', 'attachment'],
+  ]) {
+    const attachment = await store.upload({ name: name!, bytes: Buffer.from('data') })
+    const projection = await store.previewFile(attachment.id)
+    assert.equal(basename(projection.path), expected)
+    assert.equal(projection.attachment.name, name)
+  }
+  const long = await store.upload({ name: '记'.repeat(160) + '.docx', bytes: Buffer.from('data') })
+  const projected = basename((await store.previewFile(long.id)).path)
+  assert.ok(Buffer.byteLength(projected, 'utf8') <= 240)
+  assert.ok(projected.endsWith('.docx'))
+  assert.ok(!/[<>:"|?*]|[. ]$/u.test(projected))
+})
+
+test('a held native preview lock times out without stealing it', async t => {
+  const store = new AttachmentStore({ directory: await directory(t), lockTimeoutMs: 20 })
+  const attachment = await store.upload({ name: 'draft.txt', bytes: Buffer.from('original') })
+  const path = join(store.directory, '.preview.lock')
+  await writeFile(path, 'owned by another preview')
+  await assert.rejects(store.previewFile(attachment.id), (error: unknown) => error instanceof AttachmentError && error.code === 'ATTACHMENT_LOCKED')
+  assert.equal(await readFile(path, 'utf8'), 'owned by another preview')
+})
+
+test('native preview rejects linked projection locks without changing their targets', async t => {
+  for (const kind of ['symlink', 'hardlink'] as const) {
+    const root = await directory(t)
+    const store = new AttachmentStore({ directory: root })
+    const attachment = await store.upload({ name: 'draft.txt', bytes: Buffer.from('original') })
+    const outside = join(root, 'outside.txt')
+    await writeFile(outside, 'untouched')
+    const path = join(store.directory, '.preview.lock')
+    if (kind === 'symlink') await symlink(outside, path)
+    else await link(outside, path)
+    await assert.rejects(store.previewFile(attachment.id), (error: unknown) => error instanceof AttachmentError && error.code === 'CORRUPT_ATTACHMENTS')
+    assert.equal(await readFile(outside, 'utf8'), 'untouched')
+    assert.ok((await lstat(path)).isSymbolicLink() || (await lstat(path)).nlink === 2)
+  }
 })
 
 async function httpFixture(t: TestContext, maxFileBytes = 1024) {

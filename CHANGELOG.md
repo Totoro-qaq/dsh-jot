@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Reuse DSH's file preview for note attachments, including Office documents, spreadsheets, text, images and PDF when the corresponding Host viewer is available. Opening from the full notes workbench returns to the selected Conversation; without a selected Conversation, the existing attachment dialog and downloads remain available.
+- Add an explicit default-application opener using the official cross-platform native API. It opens a verified private attachment copy on the serving Host; edits in that application do not replace the uploaded attachment.
+
 ## 0.2.3 — 2026-10-03
 
 - Fix a Windows exclusive-file-open permission race while acquiring note and attachment locks. Transient Windows `EPERM` is retried within the existing deadline; persistent permission errors remain failures. Existing locks are never removed to acquire ownership.

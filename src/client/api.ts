@@ -1,4 +1,4 @@
-import type { AttachmentInfo, Folder, JotApi, JotState, Note, NoteInput, NotePatch, NoteQuery } from './types.js'
+import type { AttachmentCapabilities, AttachmentInfo, Folder, JotApi, JotState, Note, NoteInput, NotePatch, NoteQuery } from './types.js'
 
 export class JotApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -8,11 +8,12 @@ export class JotApiError extends Error {
 }
 
 export function createJotApi(base = '/jot/api'): JotApi {
-  const request = async <T>(path: string, method = 'GET', body?: unknown): Promise<T> => {
+  const request = async <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
     const response = await fetch(`${base}${path}`, {
       method,
       credentials: 'same-origin',
       cache: 'no-store',
+      signal,
       headers: body === undefined ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
@@ -43,6 +44,9 @@ export function createJotApi(base = '/jot/api'): JotApi {
     deleteFolder: id => request<void>(`/folders/${encodeURIComponent(id)}`, 'DELETE'),
     setAgentEnabled: agentEnabled => request<{ agentEnabled: boolean }>('/settings', 'PATCH', { agentEnabled }),
     getAttachment: id => request<AttachmentInfo>(`/attachments/${encodeURIComponent(id)}`),
+    getAttachmentCapabilities: () => request<AttachmentCapabilities>('/attachment-capabilities'),
+    prepareAttachmentPreview: (id, options) => request<{ path: string }>(`/attachments/${encodeURIComponent(id)}/preview`, 'POST', {}, options?.signal),
+    openAttachment: (id, options) => request<void>(`/attachments/${encodeURIComponent(id)}/open`, 'POST', {}, options?.signal),
     async uploadAttachment(file) {
       const response = await fetch(`${base}/attachments`, {
         method: 'POST', credentials: 'same-origin', body: file,

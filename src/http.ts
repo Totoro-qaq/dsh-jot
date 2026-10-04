@@ -2,7 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
 import type { JotStore } from './store.js'
 import { boundedString, MAX_DOC_BYTES, MAX_TITLE_LENGTH, onlyKeys, validateRichDoc } from './model.js'
-import { AttachmentStore } from './attachments.js'
+import { AttachmentStore, validateAttachmentId } from './attachments.js'
+import type { AttachmentActions } from './attachment-actions.js'
 import { EXPORT_FORMATS, exportJotNote, type ExportFormat } from './exports.js'
 
 export const JOT_API_PATH = '/jot/api'
@@ -13,6 +14,8 @@ export interface JotHttpOptions {
   /** The shared DSH Connection's Host/Origin fence and signed-cookie check. */
   authorize?: (request: IncomingMessage) => number | undefined
   attachments?: AttachmentStore
+  /** Native attachment gestures are explicitly installed by the Host, never by a standalone server. */
+  actions?: AttachmentActions
 }
 
 class HttpError extends Error {
@@ -152,6 +155,26 @@ function reply(response: ServerResponse, status: number, payload: unknown): void
   response.end(JSON.stringify(payload))
 }
 
+/** A completed request body is normal; a disconnected response cancels a pending native gesture. */
+function requestLifetime(request: IncomingMessage, response: ServerResponse) {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  const requestClosed = () => { if (!request.complete) abort() }
+  const responseClosed = () => { if (!response.writableFinished) abort() }
+  request.on('aborted', abort)
+  request.on('close', requestClosed)
+  response.on('close', responseClosed)
+  if (request.aborted || request.destroyed && !request.complete || response.destroyed) abort()
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      request.off('aborted', abort)
+      request.off('close', requestClosed)
+      response.off('close', responseClosed)
+    },
+  }
+}
+
 /** A standalone adapter; a missing shared authorizer always refuses access. */
 export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) {
   const attachments = options.attachments ?? new AttachmentStore({ directory: store.directory })
@@ -168,7 +191,31 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
       const method = request.method ?? 'GET'
       let data: unknown
       let status = 200
-      if (method === 'POST' && path === '/export') {
+      if (path === '/attachment-capabilities') {
+        if (method !== 'GET') {
+          response.setHeader('allow', 'GET')
+          throw new HttpError('METHOD_NOT_ALLOWED', 'Unsupported attachment operation.', 405)
+        }
+        data = options.actions?.capabilities() ?? { nativeOpen: false }
+      } else if (/^\/attachments\/[^/]+\/(?:preview|open)$/u.test(path)) {
+        if (method !== 'POST') {
+          response.setHeader('allow', 'POST')
+          throw new HttpError('METHOD_NOT_ALLOWED', 'Attachment actions require POST.', 405)
+        }
+        const match = /^\/attachments\/([^/]+)\/(preview|open)$/u.exec(path)!
+        const id = validateAttachmentId(pathId(match[1]!))
+        const body = await readJson(request)
+        onlyKeys(body, [], 'attachment action')
+        const actions = options.actions
+        if (!actions) throw new HttpError('ATTACHMENT_ACTIONS_UNAVAILABLE', 'Attachment application actions are unavailable on this Host. Download the file to open it.', 409)
+        if (match[2] === 'preview') data = await actions.preparePreview(id)
+        else {
+          const lifetime = requestLifetime(request, response)
+          try { await actions.open(id, lifetime.signal) }
+          finally { lifetime.dispose() }
+          data = null
+        }
+      } else if (method === 'POST' && path === '/export') {
         const body = await readJson(request)
         onlyKeys(body, ['title', 'content', 'format'], 'export')
         const title = boundedString(body.title ?? '', MAX_TITLE_LENGTH, 'title')
@@ -275,12 +322,13 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
         await store.setAgentEnabled(body.agentEnabled, 'user')
         data = { agentEnabled: (await store.readState('user')).agentEnabled }
       } else throw new HttpError('NOT_FOUND', 'Unknown Jot endpoint.', 404)
-      reply(response, status, { data })
+      if (!response.destroyed) reply(response, status, { data })
     } catch (error) {
       const known = error !== null && typeof error === 'object' && 'code' in error && 'status' in error
       const status = known && typeof error.status === 'number' ? error.status : 500
       const code = known && typeof error.code === 'string' ? error.code : 'INTERNAL_ERROR'
       const message = status < 500 && error instanceof Error ? error.message : 'Jot could not complete the operation.'
+      if (response.destroyed) return
       if (!response.headersSent) reply(response, status, { error: { code, message } })
       else response.end()
     }
