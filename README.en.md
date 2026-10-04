@@ -18,11 +18,11 @@
 
 ## Start with a thought
 
-- **Write directly.** Headings, bold, italic, underline, checklists, tables, text colors and highlights, without writing Markdown. Tables have row/column menus, end-of-table add controls, draggable column widths and automatic fitting.
-- **Find and organize.** Search titles and body text, find/replace within a note, pin useful notes, view recent edits, use optional folders, and sort, select, move or duplicate notes.
-- **Keep material.** Capture selected or pasted text and add images or files. Images have previews; PDFs use the Host's viewer, and other attachments can be downloaded.
-- **Keep writing.** Autosave, recovery drafts and revision-conflict notices; deleted notes go to Trash.
-- **Export your work.** Markdown, TXT, PDF or Word (DOCX); Markdown with attachments becomes an offline ZIP.
+- **Write directly.** Headings, bold, italic, underline, checklists, tables, text colors and highlights, without writing Markdown syntax. Tables support row/column menus, end-of-table insertion, draggable column widths, and automatic width fitting.
+- **Find and organize.** Search note titles and body text, find and replace within a note, pin frequently used notes, view recent edits, organize with optional folders, and sort, select, move, or duplicate notes.
+- **Keep material.** Capture selected or pasted text, and attach images or files. Images have inline previews; PDF preview depends on DSH's viewer, while other attachments can be downloaded.
+- **Keep writing.** Autosave, local recovery drafts, and revision-conflict notices help you keep writing; deleted notes go to Trash.
+- **Export your work.** Export to Markdown, TXT, PDF, or Word (DOCX); Markdown with attachments exports as a self-contained offline ZIP archive.
 
 A colorful notebook identifies Jot. Actions use consistent icons; fonts, text scaling and themes follow DSH.
 
@@ -67,7 +67,7 @@ Data stays in `$DSH_HOME/jot`, or `~/.dsh/jot` when unset. Back up the whole dir
 
 Attachments default to 20 MiB per file and 500 MiB total. Cloud sync, real-time collaboration, drawing and version history are not included. PDF preview depends on the Host's viewer; exports do not promise pixel-identical editor output.
 
-0.2.3 passed typecheck, 152 tests, the build and package checks, followed by bounded functional checks in the real DSH Web UI and macOS Desktop. Their scope is recorded by version in the [validation record](./docs/VALIDATION.md). Windows/Linux shortcuts were platform-emulated, **not tested on actual systems**. Complete native IME/clipboard behavior, long-term stability and specific third-party plugin combinations still need further validation.
+Version 0.2.3 fixes backend lock behavior and passed typecheck, 152 tests, build and package checks, and source CI on Linux, macOS and Windows. Limited functional checks in the actual DSH Web UI and macOS Desktop mainly cover versions 0.2.1 and 0.2.2; see the [validation record](./docs/VALIDATION.md) for scope. Windows/Linux shortcuts were platform-emulated, **not tested on actual systems**. Complete native IME/clipboard behavior, long-term stability and specific third-party plugin combinations still need further validation.
 
 ## More
 
