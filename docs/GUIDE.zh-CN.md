@@ -4,9 +4,9 @@
 
 DSH 中由人管理的笔记与轻文档工作台。直接写段落、列表和待办，按需要允许 agent 一起维护。
 
-当前版本 **dsh-jot 0.2.3**，验证宿主为 **DeepSeek Harness 0.2.0-rc.2**。[GitHub](https://github.com/Totoro-qaq/dsh-jot) · [版本记录](https://github.com/Totoro-qaq/dsh-jot/releases) · [npm](https://www.npmjs.com/package/dsh-jot)
+当前版本 **dsh-jot 0.2.4**，验证宿主为 **DeepSeek Harness 0.2.0-rc.2**。[GitHub](https://github.com/Totoro-qaq/dsh-jot) · [版本记录](https://github.com/Totoro-qaq/dsh-jot/releases) · [npm](https://www.npmjs.com/package/dsh-jot)
 
-目标覆盖 macOS、Windows 和 Linux 的 Desktop／Web。0.2.3 已通过类型检查、152 项测试和构建，当前宿主验收与 0.2.0 的历史记录分开保存在[验证记录](VALIDATION.md)。Windows／Linux 快捷键做了浏览器平台模拟，真实操作系统验收尚待补齐。
+目标覆盖 macOS、Windows 和 Linux 的 Desktop／Web。0.2.4 已通过本地类型检查、197 项测试和构建，并在真实 DSH Web UI 验收官方附件预览、在 macOS 文本编辑验收应用打开。CI、发布与历史桌面验收分开保存在[验证记录](VALIDATION.md)。Windows／Linux 应用打开尚未实机验收。
 
 ## 已实现
 
@@ -22,7 +22,7 @@ DSH 中由人管理的笔记与轻文档工作台。直接写段落、列表和�
 - 删除进入回收站，可以恢复；删除文件夹保留其中笔记。
 - 更多／右键菜单提供置顶、移动、复制、删除和导出；选择模式可批量移动或移到回收站。
 - 从当前窗口选中文字或粘贴文字，摘录为新笔记或追加到已有笔记，保留用户填写的来源。
-- 文件选择、粘贴截图、拖入图片／文件；管理附件、图片和 PDF 的基本预览与下载。
+- 文件选择、粘贴截图、拖入图片／文件；复用 DSH 官方附件预览，有桌面环境时可用默认应用打开。
 - 导出当前草稿为 TXT、Markdown、PDF 或 Word（DOCX）；带附件的 Markdown 自动打包为离线 ZIP。
 - 「允许 AI 协作」默认关闭。用户始终可以增删改；开启后 agent 可用五个 Jot 工具。
 
@@ -69,7 +69,7 @@ pnpm pack --pack-destination artifacts
 将生成的 tarball 装到需要使用的 Profile：
 
 ```sh
-dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.3.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.4.tgz
 # Web 使用 --profile web
 ```
 
@@ -110,23 +110,23 @@ macOS／Windows Desktop 会先处理宿主绑定。正文聚焦时，随记使�
 
 ## 附件与导出
 
-### 开发分支：官方预览与应用打开（尚未发布到 npm）
+### 官方预览与应用打开
 
 点击附件优先交给 DSH 官方文件预览，使用已选中的会话。在完整随记工作台点击会切回该会话并打开预览侧栏；正文草稿继续保留。Word／PPT 由官方主机服务转换为 PDF；Excel、文本、图片和 PDF 使用对应的官方查看器，可用格式和大小限制以主机配置为准。此操作不创建新会话，也不把附件复制进工作项目。
 
-没有选中的会话或官方查看器不可用时，继续使用下方 0.2.3 的附件弹窗和下载功能。主机具备桌面打开能力时，弹窗另提供「用默认应用打开」；macOS、Windows 和带桌面环境的 Linux 使用各自的文件关联。Web 远程访问时打开的是运行 DSH 的主机，不是浏览器所在电脑；无桌面环境的服务器保留下载入口。
+没有选中的会话或官方查看器不可用时，继续使用附件弹窗和下载功能。主机具备桌面打开能力时，弹窗另提供「用默认应用打开」；macOS、Windows 和带桌面环境的 Linux 使用各自的文件关联。Web 远程访问时打开的是运行 DSH 的主机，不是浏览器所在电脑；无桌面环境的服务器保留下载入口。
 
 外部应用打开的是经校验的附件副本，修改不会自动同步到笔记。下一次打开会恢复上传内容，需要保留外部修改时应另存文件并重新添加附件。
 
-### 已发布的 0.2.3
+### 附件限制与回退
 
 附件默认单文件最多 **20 MiB**，同一数据目录累计 **500 MiB／1,000 个附件**；界面每次最多添加 20 个文件。配置 `attachmentMaxBytes`、`attachmentMaxTotalBytes` 可调整字节额度，数量上限仍为 1,000。附件存入受管理的本地文件，只在正文保存 ID，不保存任意文件路径。
 
-| 类型 | 上传后如何查看 |
+| 类型 | 未使用官方查看器时如何查看 |
 | --- | --- |
 | PNG、JPEG、GIF、WebP | 正文图片及预览弹窗 |
 | PDF | 预览弹窗，依赖 DSH／浏览器的 PDF 查看器 |
-| Word、Excel、PPT、Markdown、TXT、SVG、音视频等 | 文件卡片与下载；当前没有 Office 或飞书文档预览 |
+| Word、Excel、PPT、Markdown、TXT、SVG、音视频等 | 文件卡片、下载，以及主机支持时的默认应用打开 |
 
 上传没有扩展名白名单；支持保存文件不代表能够解析或预览其内容。
 

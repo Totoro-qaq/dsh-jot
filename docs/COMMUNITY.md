@@ -2,16 +2,16 @@
 
 项目：[Totoro-qaq/dsh-jot](https://github.com/Totoro-qaq/dsh-jot) · npm：[`dsh-jot`](https://www.npmjs.com/package/dsh-jot)。
 
-本页记录收录方式与提交材料；准备、提交和已收录是不同状态。规则核对日期：2026-10-03。
+本页记录收录方式与提交材料；准备、提交和已收录是不同状态。状态核对日期：2026-10-04。
 
 | 入口 | 当前状态 |
 | --- | --- |
 | dsh-market / Awesome DSH Plugin | [PR #6500](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/6500) 已提交，等待检查和维护者审核 |
-| dshfind | 已设置公开仓库的 `dsh-plugin` topic，等待其定期同步；尚不宣称已收录 |
-| DSH Directory | [Issue #334](https://github.com/alexchenzl/dsh-plugin-directory/issues/334) 已提交，等待自动检查 |
-| DSH Plugin Store | 下方提供网站表单材料，由仓库作者自行提交 |
+| dshfind | [已公开收录](https://dshfind.com/zh/plugins/Totoro-qaq/dsh-jot)，当前索引识别 0.2.3，后续版本等待同步 |
+| DSH Directory | [Issue #334](https://github.com/alexchenzl/dsh-plugin-directory/issues/334) 仍开放，官网搜索尚无结果 |
+| DSH Plugin Store | 当前公开目录尚未展示随记；下方保留网站表单材料 |
 
-0.2.3 Release 与 npm 0.2.3 均已公开，npm latest 指向 0.2.3；早期 npm 0.2.2 保留为历史版本。
+安装包通过 [GitHub Releases](https://github.com/Totoro-qaq/dsh-jot/releases) 与 [npm](https://www.npmjs.com/package/dsh-jot) 分发；npm 默认安装 `latest`。发行版本、验证结果和社区目录同步各自核对。
 
 ## dsh-market / Awesome DSH Plugin
 
@@ -60,7 +60,7 @@ GitHub 简介、topics、`package.json` 的 `dsh.bundle`、公开稳定 npm 版�
 - **Anything we should verify before listing：** `Version 0.2.3 fixes Windows lock acquisition and passed 152 tests across hosted Linux, Windows and macOS CI. Its unchanged interface was checked in the real DeepSeek Harness 0.2.0-rc.2 Web UI and macOS Desktop during 0.2.2 validation. Install with dsh plugin --profile web add dsh-jot@0.2.3 (Desktop: --profile desktop), or use the current prebuilt Release asset. AI collaboration is off by default. PNG/JPEG/GIF/WebP preview is supported; PDF preview depends on the host viewer, and other attachments are downloadable. Windows/Linux shortcuts were platform-emulated, not validated on actual systems. See README.en.md and docs/VALIDATION.md for scope. MIT license.`
 - **Your email：** 可选，留空即可；不代填个人邮箱。
 
-这是人工审核的官网表单，当前不宣称已经提交或收录。
+这是人工审核的官网表单；本次确认的是公开目录尚未展示，不能据此判断用户是否已经提交。
 
 ## 当前未覆盖
 

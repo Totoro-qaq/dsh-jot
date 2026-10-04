@@ -10,7 +10,7 @@
   中文 · <a href="./README.en.md">English</a> · <a href="./docs/GUIDE.zh-CN.md">使用指南</a> · <a href="./docs/VALIDATION.md">验证记录</a> · <a href="./LICENSE">MIT</a>
 </p>
 
-**0.2.3** · 验证宿主 **DeepSeek Harness 0.2.0-rc.2** · [更新记录](https://github.com/Totoro-qaq/dsh-jot/releases)
+**0.2.4** · 验证宿主 **DeepSeek Harness 0.2.0-rc.2** · [更新记录](https://github.com/Totoro-qaq/dsh-jot/releases)
 
 ![随记在真实 DSH Web UI 中的完整工作台：笔记列表、核对清单、表格、颜色和高亮](./assets/readme/workbench.png)
 
@@ -20,7 +20,7 @@
 
 - **直接写。** 段落、标题、粗体、斜体、下划线、核对清单、表格、文字颜色和高亮，无需输入 Markdown 语法。表格支持增删行列、末尾「＋」追加、列宽拖动和自动适应宽度。
 - **随手找。** 搜索笔记标题和正文，在笔记内查找与替换，置顶常用笔记，查看最近修改；文件夹按需创建，也可以排序、多选、移动和复制。
-- **把资料留下。** 摘录选中或粘贴的文字，添加图片与文件。图片可直接预览，PDF 预览依赖宿主查看器，其他附件可下载。
+- **把资料留下。** 摘录文字，添加图片与文件。附件复用 DSH 官方查看器，支持 Word／PPT、表格、图片、PDF 和文本预览；有桌面环境时，可用默认应用打开。
 - **安心接着写。** 自动保存并保留恢复草稿，遇到版本冲突时提醒；删除的笔记进入回收站。
 - **带到别处。** 支持导出为 Markdown、TXT、PDF 或 Word（DOCX）；包含附件的 Markdown 导出为可离线使用的 ZIP 压缩包。
 
@@ -65,9 +65,9 @@ dsh plugin --profile web add dsh-jot
 
 数据保存在本地 `$DSH_HOME/jot`，未设置时为 `~/.dsh/jot`。备份时保留整个目录；界面的恢复草稿另保存在 Local Storage。人和 agent 的修改都会检查版本，避免静默覆盖。
 
-附件默认单文件 20 MiB、全库 500 MiB。当前不提供云同步、多人实时协作、绘图或历史版本；PDF 预览依赖宿主查看器，导出也不保证与编辑器逐像素一致。
+附件默认单文件 20 MiB、全库 500 MiB。官方预览需要选中会话及对应查看器；从完整工作台预览会切回该会话，没有会话时保留图片／PDF 弹窗和下载。默认应用打开的是 DSH 主机上的附件副本，外部修改需另存后重新添加。当前不提供云同步、多人实时协作、绘图或历史版本；导出不保证与编辑器逐像素一致。
 
-0.2.3 主要修复后端锁机制，已通过类型检查、152 项测试、构建与打包检查，以及 Linux、macOS、Windows 的源码 CI。实际 DSH Web UI 和 macOS Desktop 的有限功能验收主要对应 0.2.1 与 0.2.2，具体范围见[验证记录](./docs/VALIDATION.md)。Windows/Linux 快捷键做了平台模拟，尚未实机验收；完整原生输入法、剪贴板、长期稳定性和具体第三方插件组合仍需继续验证。
+0.2.4 增加官方附件预览与应用打开，已通过本地类型检查、197 项测试、构建及打包检查。真实 DSH Web UI 验收了 Word、CSV、PDF、TXT；默认应用打开在 macOS 文本编辑中实测成功。CI 配置覆盖 Linux、macOS 和 Windows，具体结果和历史桌面验收见[验证记录](./docs/VALIDATION.md)。Windows/Linux 应用打开尚未实机验收；完整原生输入法、剪贴板、长期稳定性和具体第三方插件组合仍需继续验证。
 
 ## 继续了解
 
@@ -88,7 +88,7 @@ pnpm install --frozen-lockfile
 pnpm check
 pnpm pack:check
 pnpm pack --pack-destination artifacts
-dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.3.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.4.tgz
 ```
 
 将最后一行替换为实际文件路径；Web 使用 `--profile web`。

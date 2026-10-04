@@ -10,7 +10,7 @@
   <a href="./README.md">中文</a> · English · <a href="./docs/GUIDE.zh-CN.md">Guide (Chinese)</a> · <a href="./docs/VALIDATION.md">Validation</a> · <a href="./LICENSE">MIT</a>
 </p>
 
-**0.2.3** · Validated with **DeepSeek Harness 0.2.0-rc.2** · [Releases](https://github.com/Totoro-qaq/dsh-jot/releases)
+**0.2.4** · Validated with **DeepSeek Harness 0.2.0-rc.2** · [Releases](https://github.com/Totoro-qaq/dsh-jot/releases)
 
 ![Jot full workbench in the actual DSH Host, showing notes, checklists, tables, colors and highlights in English](./assets/readme/workbench-en.png)
 
@@ -20,7 +20,7 @@
 
 - **Write directly.** Headings, bold, italic, underline, checklists, tables, text colors and highlights, without writing Markdown syntax. Tables support row/column menus, end-of-table insertion, draggable column widths, and automatic width fitting.
 - **Find and organize.** Search note titles and body text, find and replace within a note, pin frequently used notes, view recent edits, organize with optional folders, and sort, select, move, or duplicate notes.
-- **Keep material.** Capture selected or pasted text, and attach images or files. Images have inline previews; PDF preview depends on DSH's viewer, while other attachments can be downloaded.
+- **Keep material.** Capture text and attach images or files. Attachments use DSH's official viewers for Word/PowerPoint, spreadsheets, images, PDF and text; a Host with a desktop can also open them in the default application.
 - **Keep writing.** Autosave, local recovery drafts, and revision-conflict notices help you keep writing; deleted notes go to Trash.
 - **Export your work.** Export to Markdown, TXT, PDF, or Word (DOCX); Markdown with attachments exports as a self-contained offline ZIP archive.
 
@@ -65,9 +65,9 @@ DSH manages the sidebar's tabs, floating and docking. Expand into the full workb
 
 Data stays in `$DSH_HOME/jot`, or `~/.dsh/jot` when unset. Back up the whole directory; recovery drafts also live in the interface's Local Storage. Human and agent edits check revisions to avoid silent overwrites, and the user controls the AI permission switch.
 
-Attachments default to 20 MiB per file and 500 MiB total. Cloud sync, real-time collaboration, drawing and version history are not included. PDF preview depends on the Host's viewer; exports do not promise pixel-identical editor output.
+Attachments default to 20 MiB per file and 500 MiB total. Official previews require a selected conversation and the corresponding viewer; opening from the full workbench returns to that conversation. Without one, image/PDF dialogs and downloads remain available. Default application opening uses a copy on the DSH Host; save external edits separately and reattach them. Cloud sync, real-time collaboration, drawing and version history are not included; exports do not promise pixel-identical editor output.
 
-Version 0.2.3 fixes backend lock behavior and passed typecheck, 152 tests, build and package checks, and source CI on Linux, macOS and Windows. Limited functional checks in the actual DSH Web UI and macOS Desktop mainly cover versions 0.2.1 and 0.2.2; see the [validation record](./docs/VALIDATION.md) for scope. Windows/Linux shortcuts were platform-emulated, **not tested on actual systems**. Complete native IME/clipboard behavior, long-term stability and specific third-party plugin combinations still need further validation.
+Version 0.2.4 adds official attachment previews and application opening, and passed local typecheck, 197 tests, build and package checks. Actual DSH Web UI checks covered Word, CSV, PDF and TXT; default application opening was observed in macOS TextEdit. CI is configured for Linux, macOS and Windows; see the [validation record](./docs/VALIDATION.md) for results and historical Desktop checks. Windows/Linux application opening has **not been tested on actual systems**. Complete native IME/clipboard behavior, long-term stability and specific third-party plugin combinations still need further validation.
 
 ## More
 
@@ -88,7 +88,7 @@ pnpm install --frozen-lockfile
 pnpm check
 pnpm pack:check
 pnpm pack --pack-destination artifacts
-dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.3.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-jot/artifacts/dsh-jot-0.2.4.tgz
 ```
 
 Replace the final path with the actual file path. For Web, use `--profile web`.

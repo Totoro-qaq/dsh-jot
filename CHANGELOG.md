@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.4 — 2026-10-04
 
 - Reuse DSH's file preview for note attachments, including Office documents, spreadsheets, text, images and PDF when the corresponding Host viewer is available. Opening from the full notes workbench returns to the selected Conversation; without a selected Conversation, the existing attachment dialog and downloads remain available.
 - Add an explicit default-application opener using the official cross-platform native API. It opens a verified private attachment copy on the serving Host; edits in that application do not replace the uploaded attachment.

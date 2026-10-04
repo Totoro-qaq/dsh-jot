@@ -1,10 +1,10 @@
-# Validation — dsh-jot 0.2.3
+# Validation — dsh-jot 0.2.4
 
-Dates: 2026-10-02 and 2026-10-03 (Asia/Shanghai).
+Dates: 2026-10-02 through 2026-10-04 (Asia/Shanghai).
 
-## Unreleased — official attachment previews and application opening
+## 0.2.4 — official attachment previews and application opening
 
-Verified 2026-10-04 on macOS, using Node 22.23.1 for source checks and the official DSH 0.2.0-rc.2 bundled runtime for an isolated Web Host. Typecheck, all **197 tests**, build, package-factory checks and `git diff --check` passed. The 45 additional behavioral checks cover private file projection, Windows-safe names, independent copies, tampered bytes and links, authenticated POST-only actions, cancellation and timeouts, session/panel changes and fallback delivery across unmounts. This is a local development build, not a new npm release or cross-platform CI run.
+Verified 2026-10-04 on macOS, using Node 22.23.1 for source checks and the official DSH 0.2.0-rc.2 bundled runtime for an isolated Web Host. Typecheck, all **197 tests**, build, package-factory checks and `git diff --check` passed. The 45 additional behavioral checks cover private file projection, Windows-safe names, independent copies, tampered bytes and links, authenticated POST-only actions, cancellation and timeouts, session/panel changes and fallback delivery across unmounts. These local checks are separate from release publication and hosted cross-platform CI.
 
 The new Host used a fresh temporary DSH Home with public fixtures only; telemetry and LLM session-title generation were disabled. No provider login or model request was made. Installed Host/Client bytes and the Client served by the official Web Host matched the build. The existing test Desktop and ordinary DSH Home were left alone.
 
