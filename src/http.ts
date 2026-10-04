@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
 import type { JotStore } from './store.js'
-import { boundedString, MAX_DOC_BYTES, MAX_TITLE_LENGTH, onlyKeys, validateRichDoc } from './model.js'
+import { boundedString, documentAttachmentIds, MAX_DOC_BYTES, MAX_TITLE_LENGTH, onlyKeys, validateRichDoc, type RichDoc } from './model.js'
 import { AttachmentStore, validateAttachmentId } from './attachments.js'
 import type { AttachmentActions } from './attachment-actions.js'
 import { EXPORT_FORMATS, exportJotNote, type ExportFormat } from './exports.js'
@@ -146,11 +146,12 @@ function pathId(encoded: string): string {
   catch { throw new HttpError('INVALID_INPUT', 'Invalid encoded identifier.', 400) }
 }
 
-function reply(response: ServerResponse, status: number, payload: unknown): void {
+function reply(response: ServerResponse, status: number, payload: unknown, headers: Record<string, string> = {}): void {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
+    ...headers,
   })
   response.end(JSON.stringify(payload))
 }
@@ -178,6 +179,7 @@ function requestLifetime(request: IncomingMessage, response: ServerResponse) {
 /** A standalone adapter; a missing shared authorizer always refuses access. */
 export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) {
   const attachments = options.attachments ?? new AttachmentStore({ directory: store.directory })
+  const verifyAttachments = (content: RichDoc) => attachments.assertReferences([...documentAttachmentIds(content)])
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     try {
       assertJotRequestTrust(request)
@@ -272,7 +274,20 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
           return
         } else throw new HttpError('METHOD_NOT_ALLOWED', 'Unsupported attachment operation.', 405)
       } else if (method === 'GET' && path === '/state') {
-        data = await store.readState('user')
+        // Polling clients send the previous tag; an unchanged library costs no body or client render.
+        const previous = header(request, 'if-none-match')
+        const result = await store.readSnapshot(previous)
+        if (!result.snapshot) {
+          response.writeHead(304, { etag: result.tag, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
+          response.end()
+          return
+        }
+        if (!response.destroyed) reply(response, 200, { data: result.snapshot }, { etag: result.tag })
+        return
+      } else if (method === 'POST' && path === '/trash/empty') {
+        const body = await readJson(request)
+        onlyKeys(body, [], 'empty trash')
+        data = await store.purgeNotes('trash', 'user', async ids => { await attachments.remove(ids) })
       } else if (method === 'GET' && path === '/notes') {
         const query = url.searchParams.get('q') ?? ''
         const rawFolderId = url.searchParams.get('folderId')
@@ -286,8 +301,17 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
         } else data = await store.search(query, folderId, 'user')
       } else if (method === 'POST' && path === '/notes') {
         const body = await readJson(request)
-        data = await store.createNote(body as Parameters<JotStore['createNote']>[0], 'user')
+        data = await store.createNote(body as Parameters<JotStore['createNote']>[0], 'user', verifyAttachments)
         status = 201
+      } else if (/^\/notes\/[^/]+\/purge$/u.test(path)) {
+        if (method !== 'POST') {
+          response.setHeader('allow', 'POST')
+          throw new HttpError('METHOD_NOT_ALLOWED', 'Permanent deletion requires POST.', 405)
+        }
+        const id = pathId(/^\/notes\/([^/]+)\/purge$/u.exec(path)![1]!)
+        const body = await readJson(request)
+        onlyKeys(body, ['revision'], 'permanent deletion')
+        data = await store.purgeNotes([{ id, revision: requireRevision(body) }], 'user', async ids => { await attachments.remove(ids) })
       } else if (/^\/notes\/[^/]+(?:\/restore)?$/u.test(path)) {
         const match = /^\/notes\/([^/]+)(\/restore)?$/u.exec(path)!
         const id = pathId(match[1]!)
@@ -295,7 +319,7 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
         else if (method === 'PATCH' && !match[2]) {
           const body = await readJson(request)
           const { revision: _revision, ...patch } = body
-          data = await store.updateNote(id, requireRevision(body), patch, 'user')
+          data = await store.updateNote(id, requireRevision(body), patch, 'user', verifyAttachments)
         } else if (method === 'DELETE' && !match[2]) {
           const body = await readJson(request)
           data = await store.deleteNote(id, requireRevision(body), 'user')

@@ -67,7 +67,7 @@ test('agent creates, searches, reads and trashes notes using required CAS revisi
   const deleted = await run('jot_delete', { id: created.id, revision: read.revision })
   assert.ok(deleted.deletedAt)
   assert.equal(deleted.text, undefined)
-  assert.deepEqual(await run('jot_list', {}), { notes: [], total: 0, nextOffset: null })
+  assert.deepEqual(await run('jot_list', {}), { notes: [], total: 0, nextOffset: null, folders: [] })
   await assert.rejects(run('jot_read', { id: created.id }), code('NOT_FOUND'))
   for (const name of ['jot_update', 'jot_delete']) {
     const tool = tools.find(item => item.name === name)!

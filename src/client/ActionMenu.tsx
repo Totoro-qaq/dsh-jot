@@ -13,9 +13,12 @@ export interface ActionMenuItem {
   /** A defined value marks this item as a radio choice within its menu. */
   checked?: boolean
 }
+/** Non-interactive structure: a divider or a small group caption. */
+export type ActionMenuEntry = ActionMenuItem | { separator: true } | { heading: string }
+const isItem = (entry: ActionMenuEntry): entry is ActionMenuItem => 'onSelect' in entry
 export interface ActionMenuProps {
   triggerLabel: string
-  items: readonly ActionMenuItem[]
+  items: readonly ActionMenuEntry[]
   /** Context menus open on mount at this point and do not add a trigger. */
   position?: { x: number; y: number }
   /** In context mode the caller can unmount the menu when this fires. */
@@ -35,11 +38,13 @@ export function ActionMenu({ triggerLabel, items, position, onClose, triggerIcon
   const isOpen = useRef(open)
   isOpen.current = open
   const initialFocus = useRef(true)
-  const [active, setActive] = useState(() => items.findIndex(item => !item.disabled))
+  const [active, setActive] = useState(() => items.findIndex(item => isItem(item) && !item.disabled))
   const [coordinates, setCoordinates] = useState<{ left: number; top: number } | null>(null)
   const closeCallback = useRef(onClose)
   closeCallback.current = onClose
-  const enabled = items.flatMap((item, index) => item.disabled ? [] : [index])
+  const enabled = items.flatMap((item, index) => isItem(item) && !item.disabled ? [index] : [])
+  // Align labels when only some rows carry an icon (for example radio choices).
+  const iconSlot = items.some(item => isItem(item) && item.icon)
 
   const close = useCallback((restore = true) => {
     if (!isOpen.current) return
@@ -58,7 +63,7 @@ export function ActionMenu({ triggerLabel, items, position, onClose, triggerIcon
   }
 
   useEffect(() => {
-    if (position) { initialFocus.current = true; isOpen.current = true; setOpen(true); setCoordinates(null); setActive(items.findIndex(item => !item.disabled)) }
+    if (position) { initialFocus.current = true; isOpen.current = true; setOpen(true); setCoordinates(null); setActive(items.findIndex(item => isItem(item) && !item.disabled)) }
   }, [position?.x, position?.y])
 
   useEffect(() => {
@@ -140,15 +145,21 @@ export function ActionMenu({ triggerLabel, items, position, onClose, triggerIcon
       style={{ position: 'fixed', left: coordinates?.left ?? 0, top: coordinates?.top ?? 0,
         right: 'auto', visibility: coordinates ? 'visible' : 'hidden', maxWidth: 'calc(100vw - 16px)',
         maxHeight: 'calc(100vh - 16px)', overflowY: 'auto', zIndex: modalOwner ? 60 : 40 }}>
-      {items.map((item, index) => <button type="button" key={index} role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
-        aria-checked={item.checked} disabled={item.disabled}
-        className={item.danger ? 'jot-danger' : undefined} tabIndex={index === active ? 0 : -1}
-        ref={element => { if (element) buttons.current.set(index, element); else buttons.current.delete(index) }}
-        onFocus={() => setActive(index)} onClick={() => { close(); item.onSelect() }}>
-        {item.icon && <JotActionIcon name={item.icon} className="jot-menu-item-icon" />}
-        <span className="jot-menu-item-label">{item.label}</span>
-        {item.checked && <span aria-hidden="true" className="jot-menu-item-check">✓</span>}
-      </button>)}
+      {items.map((item, index) => {
+        if (!isItem(item)) return 'separator' in item
+          ? <div key={index} role="separator" />
+          : <div key={index} role="presentation" className="jot-menu-heading">{item.heading}</div>
+        return <button type="button" key={index} role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+          aria-checked={item.checked} disabled={item.disabled}
+          className={item.danger ? 'jot-danger' : undefined} tabIndex={index === active ? 0 : -1}
+          ref={element => { if (element) buttons.current.set(index, element); else buttons.current.delete(index) }}
+          onFocus={() => setActive(index)} onClick={() => { close(); item.onSelect() }}>
+          {item.icon ? <JotActionIcon name={item.icon} className="jot-menu-item-icon" />
+            : iconSlot && <span aria-hidden="true" className="jot-menu-item-icon-slot" />}
+          <span className="jot-menu-item-label">{item.label}</span>
+          {item.checked && <span aria-hidden="true" className="jot-menu-item-check">✓</span>}
+        </button>
+      })}
     </div>
   </div>, document.body) : null
 

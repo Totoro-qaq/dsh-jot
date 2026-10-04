@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { createElement, type ComponentType } from 'react'
 import { renderToString } from 'react-dom/server'
 import type { Context } from '@deepseek-ai/cordis'
+import type { ShortcutCommand, ShortcutContext } from '@deepseek-ai/dsh-client-shortcuts/client'
 import { apply, PANEL_ID, TAB_ID } from '../src/client/index.js'
 import { JotIcon } from '../src/client/JotIcon.js'
 
@@ -26,10 +27,23 @@ function entryFixture() {
   const bodies = new Map<string, ComponentType<any>>()
   const registrations: Record<string, unknown>[] = []
   const tabTypes = new Map<string, Record<string, any>>()
+  const keyboardCommands = new Map<string, ShortcutCommand>()
+  const selectedPanels: unknown[] = []
+  const openedTabs: string[] = []
+  let panelId: unknown = null
+  let seatMounted: unknown = undefined
   const effects: (() => void)[] = []
   const retain = (result: unknown) => { if (typeof result === 'function') effects.push(result as () => void) }
   const context = {
     locale,
+    shortcuts: {
+      runtime: 'web', platform: 'macos',
+      register(command: ShortcutCommand) {
+        assert.equal(keyboardCommands.has(command.id), false, 'duplicate keyboard registration')
+        keyboardCommands.set(command.id, command)
+        return () => { if (keyboardCommands.get(command.id) === command) keyboardCommands.delete(command.id) }
+      },
+    },
     slots: {
       inject(_name: string, operation: () => unknown) { retain(operation()); return () => {} },
       register(options: Record<string, unknown>, component: ComponentType<any>) {
@@ -45,8 +59,8 @@ function entryFixture() {
       tabTypes.set(definition.id, definition)
       return () => { tabTypes.delete(definition.id) }
     } },
-    sidebarRight: { openTab() {} },
-    layout: { selectPanel() {} },
+    sidebarRight: { mounted: { getSnapshot: () => seatMounted }, openTab(kind: string) { openedTabs.push(kind) } },
+    layout: { panelInfo: { getSnapshot: () => ({ activePanelId: panelId }) }, selectPanel(id: unknown) { panelId = id; selectedPanels.push(id) } },
     effect(operation: () => unknown) { retain(operation()); return () => {} },
   }
   const component = (key: string) => {
@@ -54,7 +68,8 @@ function entryFixture() {
     assert.ok(result, `missing native registration ${key}`)
     return result
   }
-  return { locale, bodies, tabTypes, registrations, component, context,
+  return { locale, bodies, tabTypes, keyboardCommands, selectedPanels, openedTabs, registrations, component, context,
+    showConversation() { panelId = null; seatMounted = {} },
     mount() { apply(context as unknown as Context) },
     unmount() { for (const dispose of effects.splice(0).reverse()) dispose() },
   }
@@ -107,5 +122,31 @@ test('the notebook icon accepts native expanded and rail sizes without wrapping 
     const colors = new Set([...html.matchAll(/(?:fill|stroke)="(#[0-9a-f]{6})"/giu)].map(match => match[1]))
     assert.ok(colors.size >= 3, 'the product mark remains colorful in both native icon sizes')
   }
+  fixture.unmount()
+})
+
+test('the native entry registers all keyboard settings rows, routes to visible surfaces, and cleans up for remount', () => {
+  const fixture = entryFixture()
+  const keyboardContext: ShortcutContext = { target: null, region: 'page', modal: null, source: 'keyboard' }
+  const invoke = (id: string) => {
+    const resolution = fixture.keyboardCommands.get(id)!.resolve(keyboardContext)
+    assert.equal(resolution.status, 'handled')
+    if (resolution.status === 'handled') resolution.run()
+  }
+  fixture.mount()
+  assert.deepEqual([...fixture.keyboardCommands.keys()].sort(), ['dsh-jot.capture', 'dsh-jot.new-note', 'dsh-jot.open'])
+  fixture.locale.select('en')
+  assert.equal(fixture.keyboardCommands.get('dsh-jot.new-note')!.label(), 'Jot: New note')
+  invoke('dsh-jot.open')
+  assert.deepEqual(fixture.selectedPanels, [PANEL_ID])
+  invoke('dsh-jot.new-note')
+  assert.equal(fixture.selectedPanels.at(-1), PANEL_ID)
+  fixture.showConversation()
+  invoke('dsh-jot.capture')
+  assert.deepEqual(fixture.openedTabs, ['dsh-jot'])
+  fixture.unmount()
+  assert.equal(fixture.keyboardCommands.size, 0)
+  fixture.mount()
+  assert.equal(fixture.keyboardCommands.size, 3)
   fixture.unmount()
 })

@@ -1,19 +1,22 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { acquireFileLock } from './file-lock.js'
 import {
-  StoreError, boundedString, docFromText, docToText, onlyKeys, record,
+  StoreError, appendBlocks, boundedString, docFromText, docToText, documentAttachmentIds, onlyKeys, record,
   validateActor, validateId, validateRichDoc,
   MAX_FOLDER_NAME_LENGTH, MAX_TEXT_LENGTH, MAX_TITLE_LENGTH,
   type Actor, type CreateNoteInput, type Folder, type JotState,
-  type Note, type NoteSummary, type UpdateNotePatch,
+  type Note, type NoteSummary, type RichDoc, type UpdateNotePatch,
 } from './model.js'
 
 export { StoreError } from './model.js'
 export const STATE_FILENAME = 'jot.json'
 export const BACKUP_FILENAME = 'jot.json.bak'
 export const LOCK_FILENAME = '.jot.lock'
+/** Best-effort attribution beside jot.json, so older plugin versions can still read the notes file. */
+export const ACTIVITY_FILENAME = 'jot.activity.json'
+const MAX_ACTIVITY_BYTES = 2 * 1_048_576
 const MAX_STATE_BYTES = 32 * 1_048_576
 const NOTE_KEYS = ['id', 'title', 'content', 'text', 'folderId', 'pinned', 'revision', 'createdAt', 'updatedAt', 'deletedAt']
 
@@ -40,6 +43,13 @@ function summary(note: Note): NoteSummary {
   return structuredClone(metadata)
 }
 function emptyState(): JotState { return { version: 1, notes: [], folders: [], agentEnabled: false } }
+const contentTag = (source: string): string => createHash('sha256').update(source).digest('base64url').slice(0, 22)
+
+/** The latest saved revision of a note that came from an agent tool. */
+export interface AgentEdit { revision: number; at: string }
+/** User-facing snapshot: the notes state plus agent attribution for unchanged agent revisions. */
+export interface JotSnapshot extends JotState { agentEdits: Record<string, AgentEdit> }
+export interface PurgeResult { purged: string[]; attachments: string[] }
 
 function validateState(input: unknown): JotState {
   const data = record(input, 'state')
@@ -79,12 +89,15 @@ function validateState(input: unknown): JotState {
 }
 
 export interface StoreOptions { directory: string; lockTimeoutMs?: number }
+/** Optional adapter validation that runs under the same lock as note writes and purges. */
+export type ContentVerifier = (content: RichDoc) => Promise<void>
 
 /**
  * A lockfile serializes reads and writes across store instances and processes.
  * Every operation reloads the latest state while holding that lock, including permission checks.
  * Locks left by a killed process time out visibly; they are never stolen from an active writer.
- * No mutable state cache is kept, so a failed write cannot advance in-memory state.
+ * Cached state is keyed by saved bytes and cloned before mutations, so failed
+ * writes cannot advance the cached version.
  */
 export class JotStore {
   readonly directory: string
@@ -92,6 +105,13 @@ export class JotStore {
   readonly backupPath: string
   readonly lockPath: string
   private readonly lockTimeoutMs: number
+  readonly activityPath: string
+  /**
+   * Parsed state keyed by the exact bytes on disk. A different file, from any
+   * process, misses the cache, so it can never serve state that is not saved.
+   * Read-only operations receive the cached object and must not mutate it.
+   */
+  private cache: { source: string; state: JotState; tag: string } | null = null
 
   constructor(options: StoreOptions) {
     const input = record(options, 'store options')
@@ -100,6 +120,7 @@ export class JotStore {
     this.statePath = join(this.directory, STATE_FILENAME)
     this.backupPath = join(this.directory, BACKUP_FILENAME)
     this.lockPath = join(this.directory, LOCK_FILENAME)
+    this.activityPath = join(this.directory, ACTIVITY_FILENAME)
     this.lockTimeoutMs = input.lockTimeoutMs === undefined ? 5_000 : input.lockTimeoutMs as number
     if (!Number.isSafeInteger(this.lockTimeoutMs) || this.lockTimeoutMs < 1 || this.lockTimeoutMs > 60_000) invalid('Invalid lock timeout')
   }
@@ -115,7 +136,7 @@ export class JotStore {
     })
   }
 
-  private async load(): Promise<{ state: JotState; previous: string | null }> {
+  private async load(readOnly = false): Promise<{ state: JotState; previous: string | null; tag: string }> {
     let source: string
     try {
       const info = await stat(this.statePath)
@@ -125,7 +146,7 @@ export class JotStore {
       if (isErrno(cause, 'ENOENT')) {
         try { await stat(this.backupPath) }
         catch (backupError) {
-          if (isErrno(backupError, 'ENOENT')) return { state: emptyState(), previous: null }
+          if (isErrno(backupError, 'ENOENT')) return { state: emptyState(), previous: null, tag: 'empty' }
           throw new StoreError('PERSISTENCE_ERROR', 'Cannot inspect the notes backup', { cause: backupError })
         }
         throw new StoreError('CORRUPT_STATE', 'The main notes file is missing but a backup exists; restore it explicitly before continuing')
@@ -133,10 +154,16 @@ export class JotStore {
       if (cause instanceof StoreError) throw cause
       throw new StoreError('PERSISTENCE_ERROR', 'Cannot read the notes state', { cause })
     }
-    try { return { state: validateState(JSON.parse(source)), previous: source } }
+    const cached = this.cache
+    if (cached?.source === source) return { state: readOnly ? cached.state : structuredClone(cached.state), previous: source, tag: cached.tag }
+    let state: JotState
+    try { state = validateState(JSON.parse(source)) }
     catch (cause) {
       throw new StoreError('CORRUPT_STATE', 'The notes state is invalid; the original and its backup were preserved', { cause })
     }
+    const tag = contentTag(source)
+    this.cache = { source, state: readOnly ? state : structuredClone(state), tag }
+    return { state, previous: source, tag }
   }
 
   private async writeSynced(path: string, contents: string): Promise<void> {
@@ -146,7 +173,8 @@ export class JotStore {
   }
 
   private async persist(state: JotState, previous: string | null): Promise<void> {
-    const serialized = JSON.stringify(validateState(state)) + '\n'
+    const validated = validateState(state)
+    const serialized = JSON.stringify(validated) + '\n'
     if (Buffer.byteLength(serialized, 'utf8') > MAX_STATE_BYTES) invalid('Notes storage has reached its size limit')
     const suffix = `${process.pid}-${randomUUID()}`
     const temporary = join(this.directory, `.jot-${suffix}.tmp`)
@@ -158,6 +186,7 @@ export class JotStore {
         await rename(backupTemporary, this.backupPath)
       }
       await rename(temporary, this.statePath)
+      this.cache = { source: serialized, state: validated, tag: contentTag(serialized) }
     } catch (cause) {
       throw new StoreError('PERSISTENCE_ERROR', 'Could not save notes; the previous state remains active', { cause })
     } finally {
@@ -165,16 +194,59 @@ export class JotStore {
     }
   }
 
-  private async access<T>(actor: Actor, mutate: boolean, operation: (state: JotState) => T): Promise<T> {
+  private async access<T>(actor: Actor, mutate: boolean, operation: (state: JotState) => T | Promise<T>): Promise<T> {
     validateActor(actor)
     const unlock = await this.lock()
     try {
-      const { state, previous } = await this.load()
+      const { state, previous } = await this.load(!mutate)
       if (actor === 'agent' && !state.agentEnabled) throw new StoreError('AGENT_DISABLED', 'Agent access to notes is disabled')
-      const result = operation(state)
-      if (mutate) await this.persist(state, previous)
+      const result = await operation(state)
+      if (mutate) {
+        await this.persist(state, previous)
+        if (actor === 'agent') await this.recordAgentEdit(result, state)
+      }
       return structuredClone(result)
     } finally { await unlock() }
+  }
+
+  private async readActivity(): Promise<{ edits: Record<string, AgentEdit>; tag: string }> {
+    let source: string
+    try {
+      const info = await stat(this.activityPath)
+      if (!info.isFile() || info.size > MAX_ACTIVITY_BYTES) return { edits: {}, tag: 'none' }
+      source = await readFile(this.activityPath, 'utf8')
+    } catch { return { edits: {}, tag: 'none' } }
+    const edits: Record<string, AgentEdit> = {}
+    try {
+      const parsed = JSON.parse(source) as { version?: unknown; notes?: unknown }
+      if (parsed?.version === 1 && parsed.notes && typeof parsed.notes === 'object' && !Array.isArray(parsed.notes)) {
+        for (const [id, value] of Object.entries(parsed.notes as Record<string, unknown>)) {
+          const entry = value as Partial<AgentEdit> | null
+          if (/^[a-zA-Z0-9_-]{1,100}$/u.test(id) && Number.isSafeInteger(entry?.revision) && typeof entry?.at === 'string') {
+            edits[id] = { revision: entry.revision!, at: entry.at }
+          }
+        }
+      }
+    } catch { /* Attribution is optional; a damaged sidecar is ignored. */ }
+    return { edits, tag: contentTag(source) }
+  }
+
+  /** Best effort and never fails the saved agent operation. Entries for later human revisions are pruned. */
+  private async recordAgentEdit(result: unknown, state: JotState): Promise<void> {
+    const changed = result as Partial<Note> | null
+    if (!changed || typeof changed.id !== 'string' || typeof changed.revision !== 'number') return
+    try {
+      const { edits } = await this.readActivity()
+      const revisions = new Map(state.notes.map(note => [note.id, note.revision]))
+      const notes: Record<string, AgentEdit> = {}
+      for (const [id, entry] of Object.entries(edits)) if (revisions.get(id) === entry.revision) notes[id] = entry
+      notes[changed.id] = { revision: changed.revision, at: timestamp() }
+      const temporary = join(this.directory, `.jot-activity-${process.pid}-${randomUUID()}.tmp`)
+      try {
+        await this.writeSynced(temporary, JSON.stringify({ version: 1, notes }) + '\n')
+        await rename(temporary, this.activityPath)
+      } finally { await rm(temporary, { force: true }) }
+    } catch { /* The note itself is already saved. */ }
   }
 
   private note(state: JotState, id: string, actor: Actor, activeOnly = false): Note {
@@ -205,6 +277,25 @@ export class JotStore {
       notes: state.notes.filter(note => actor === 'user' || note.deletedAt === null).sort(compareNotes),
     }))
   }
+  /**
+   * The user's library view with a content tag. When the tag equals `ifNoneMatch`,
+   * the notes are not copied or returned, allowing an HTTP 304.
+   */
+  async readSnapshot(ifNoneMatch?: string): Promise<{ tag: string; snapshot?: JotSnapshot }> {
+    const unlock = await this.lock()
+    try {
+      const { state, tag } = await this.load(true)
+      const activity = await this.readActivity()
+      const combined = `"${tag}.${activity.tag}"`
+      if (ifNoneMatch !== undefined && ifNoneMatch === combined) return { tag: combined }
+      const agentEdits: Record<string, AgentEdit> = {}
+      for (const note of state.notes) {
+        const edit = activity.edits[note.id]
+        if (edit && edit.revision === note.revision) agentEdits[note.id] = edit
+      }
+      return { tag: combined, snapshot: structuredClone({ ...state, notes: [...state.notes].sort(compareNotes), agentEdits }) }
+    } finally { await unlock() }
+  }
   async getNote(id: string, actor: Actor = 'user'): Promise<Note> {
     return this.access(actor, false, state => this.note(state, id, actor))
   }
@@ -217,11 +308,12 @@ export class JotStore {
         .sort((a, b) => Number(b.title.toLocaleLowerCase().includes(needle)) - Number(a.title.toLocaleLowerCase().includes(needle)) || compareNotes(a, b))
     })
   }
-  async createNote(input: CreateNoteInput, actor: Actor = 'user'): Promise<Note> {
-    return this.access(actor, true, state => {
+  async createNote(input: CreateNoteInput, actor: Actor = 'user', verify?: ContentVerifier): Promise<Note> {
+    return this.access(actor, true, async state => {
       const data = record(input, 'new note')
       onlyKeys(data, ['title', 'content', 'folderId', 'pinned'], 'new note')
       const content = data.content === undefined ? docFromText('') : validateRichDoc(data.content)
+      await verify?.(content)
       const now = timestamp()
       const note: Note = { id: randomUUID(), title: data.title === undefined ? '' : boundedString(data.title, MAX_TITLE_LENGTH, 'title'),
         content, text: docToText(content), folderId: data.folderId === undefined ? null : this.folderId(state, data.folderId),
@@ -231,22 +323,29 @@ export class JotStore {
       return note
     })
   }
-  async updateNote(id: string, revision: number, patch: UpdateNotePatch, actor: Actor = 'user'): Promise<Note> {
-    return this.access(actor, true, state => {
+  async updateNote(id: string, revision: number, patch: UpdateNotePatch, actor: Actor = 'user', verify?: ContentVerifier): Promise<Note> {
+    return this.access(actor, true, async state => {
       const note = this.note(state, id, actor, true)
       this.checkRevision(note, revision)
       const data = record(patch, 'note patch')
-      onlyKeys(data, ['title', 'content', 'appendText', 'folderId', 'pinned'], 'note patch')
+      onlyKeys(data, ['title', 'content', 'appendText', 'appendContent', 'folderId', 'pinned'], 'note patch')
       if (Object.keys(data).length === 0) invalid('Note patch must change at least one field')
-      if (data.content !== undefined && data.appendText !== undefined) invalid('Choose document replacement or appendText, not both')
+      if ([data.content, data.appendText, data.appendContent].filter(value => value !== undefined).length > 1) {
+        invalid('Choose one of document replacement, appendText or appendContent')
+      }
       if (data.title !== undefined) note.title = boundedString(data.title, MAX_TITLE_LENGTH, 'title')
       if (data.content !== undefined) note.content = validateRichDoc(data.content)
       if (data.appendText !== undefined) {
         const text = boundedString(data.appendText, MAX_TEXT_LENGTH, 'appendText', false)
         note.content = validateRichDoc({ type: 'doc', content: [...note.content.content, ...docFromText(text).content] })
       }
+      if (data.appendContent !== undefined) {
+        const added = validateRichDoc(data.appendContent)
+        note.content = validateRichDoc({ type: 'doc', content: appendBlocks(note.content.content, added.content) })
+      }
       if (data.folderId !== undefined) note.folderId = this.folderId(state, data.folderId)
       if (data.pinned !== undefined) note.pinned = boolean(data.pinned, 'pinned')
+      await verify?.(note.content)
       note.text = docToText(note.content)
       note.revision++
       note.updatedAt = timestamp(note.updatedAt)
@@ -274,6 +373,41 @@ export class JotStore {
       note.revision++
       return note
     })
+  }
+  /**
+   * Permanently remove notes; only the user can do this. Explicit targets need
+   * their exact revisions; `'trash'` removes everything already in Trash.
+   * Attachments referenced only by the removed notes are handed to `release`
+   * while the notes lock is still held, so no concurrent save can adopt them.
+   */
+  async purgeNotes(targets: ReadonlyArray<{ id: string; revision: number }> | 'trash', actor: Actor = 'user',
+    release?: (attachmentIds: string[]) => Promise<void>): Promise<PurgeResult> {
+    validateActor(actor)
+    if (actor !== 'user') throw new StoreError('HUMAN_ONLY', 'Only the user can permanently delete notes')
+    if (targets !== 'trash' && (!Array.isArray(targets) || targets.length === 0 || targets.length > 10_000)) invalid('Choose notes to delete permanently')
+    const unlock = await this.lock()
+    try {
+      const { state, previous } = await this.load()
+      const removed = targets === 'trash' ? state.notes.filter(note => note.deletedAt !== null) : targets.map(target => {
+        const data = record(target, 'purge target')
+        onlyKeys(data, ['id', 'revision'], 'purge target')
+        const note = this.note(state, data.id as string, 'user')
+        this.checkRevision(note, data.revision as number)
+        return note
+      })
+      if (!removed.length) return { purged: [], attachments: [] }
+      const ids = new Set(removed.map(note => note.id))
+      state.notes = state.notes.filter(note => !ids.has(note.id))
+      const kept = new Set(state.notes.flatMap(note => [...documentAttachmentIds(note.content)]))
+      const orphaned = [...new Set(removed.flatMap(note => [...documentAttachmentIds(note.content)]))].filter(id => !kept.has(id))
+      await this.persist(state, previous)
+      let attachments: string[] = []
+      if (orphaned.length && release) {
+        try { await release(orphaned); attachments = orphaned }
+        catch { /* Notes are gone; unreleased files remain managed and harmless. */ }
+      }
+      return { purged: [...ids], attachments }
+    } finally { await unlock() }
   }
   async createFolder(name: string, actor: Actor = 'user'): Promise<Folder> {
     return this.access(actor, true, state => {

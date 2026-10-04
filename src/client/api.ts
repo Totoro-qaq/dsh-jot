@@ -1,4 +1,4 @@
-import type { AttachmentCapabilities, AttachmentInfo, Folder, JotApi, JotState, Note, NoteInput, NotePatch, NoteQuery } from './types.js'
+import type { AttachmentCapabilities, AttachmentInfo, Folder, JotApi, JotState, Note, NoteInput, NotePatch, NoteQuery, PurgeResult } from './types.js'
 
 export class JotApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -8,6 +8,7 @@ export class JotApiError extends Error {
 }
 
 export function createJotApi(base = '/jot/api'): JotApi {
+  let stateGeneration = 0
   const request = async <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
     const response = await fetch(`${base}${path}`, {
       method,
@@ -21,11 +22,48 @@ export function createJotApi(base = '/jot/api'): JotApi {
     if (!response.ok || payload.error) {
       throw new JotApiError(response.status, payload.error?.code ?? 'REQUEST_FAILED', payload.error?.message ?? `HTTP ${response.status}`)
     }
+    if (method !== 'GET' && /^\/(?:notes(?:\/|$)|folders(?:\/|$)|settings$|trash(?:\/|$))/u.test(path)) stateGeneration++
     return payload.data as T
   }
   const notePath = (id: string) => `/notes/${encodeURIComponent(id)}`
+  // Shared by every mounted panel: an unchanged library returns the identical
+  // object, which callers can compare by reference and skip re-rendering.
+  let cachedState: { request: number; tag: string | null; state: JotState } | null = null
+  let stateRequest = 0
+  const getState = async (): Promise<JotState> => {
+    const sequence = ++stateRequest
+    const generation = stateGeneration
+    const previous = cachedState
+    const response = await fetch(`${base}/state`, {
+      credentials: 'same-origin', cache: 'no-store',
+      headers: previous?.tag ? { 'if-none-match': previous.tag } : undefined,
+    })
+    if (response.status === 304) {
+      if (!previous?.tag) throw new JotApiError(304, 'REQUEST_FAILED', 'The Host returned an unchanged state without a cached snapshot.')
+      // A mutation may finish while the old conditional request is in flight.
+      if (generation !== stateGeneration) return getState()
+      // 304 describes this request's old snapshot. It cannot overwrite a
+      // different successful snapshot received while this request waited.
+      const accepted = cachedState ?? previous
+      cachedState = { ...accepted, request: Math.max(sequence, accepted.request) }
+      return cachedState.state
+    }
+    const payload = await response.json() as { data?: JotState; error?: { code?: string; message?: string } }
+    if (!response.ok || payload.error) {
+      throw new JotApiError(response.status, payload.error?.code ?? 'REQUEST_FAILED', payload.error?.message ?? `HTTP ${response.status}`)
+    }
+    const tag = response.headers.get('etag')
+    const state = payload.data
+    if (!state) throw new JotApiError(response.status, 'REQUEST_FAILED', 'The Host returned no notes snapshot.')
+    if (generation !== stateGeneration) return getState()
+    // Only a newer successful response supersedes this one. A later request
+    // that failed must not prevent an older success from initializing state.
+    if (cachedState && sequence < cachedState.request) return cachedState.state
+    cachedState = { request: sequence, tag, state }
+    return state
+  }
   return {
-    getState: () => request<JotState>('/state'),
+    getState,
     listNotes(query: NoteQuery = {}) {
       const params = new URLSearchParams()
       if (query.q) params.set('q', query.q)
@@ -39,6 +77,8 @@ export function createJotApi(base = '/jot/api'): JotApi {
     updateNote: (id: string, patch: NotePatch) => request<Note>(notePath(id), 'PATCH', patch),
     deleteNote: (id, revision) => request<Note>(notePath(id), 'DELETE', { revision }),
     restoreNote: (id, revision) => request<Note>(`${notePath(id)}/restore`, 'POST', { revision }),
+    purgeNote: (id, revision) => request<PurgeResult>(`${notePath(id)}/purge`, 'POST', { revision }),
+    emptyTrash: () => request<PurgeResult>('/trash/empty', 'POST', {}),
     createFolder: name => request<Folder>('/folders', 'POST', { name }),
     updateFolder: (id, name) => request<Folder>(`/folders/${encodeURIComponent(id)}`, 'PATCH', { name }),
     deleteFolder: id => request<void>(`/folders/${encodeURIComponent(id)}`, 'DELETE'),

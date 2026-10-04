@@ -11,6 +11,8 @@ interface ChromeGeometry {
   columnStart: number; columnWidth: number; rowStart: number; rowHeight: number
 }
 interface TableChrome { mount: HTMLElement; geometry: ChromeGeometry }
+/** Matches --jot-table-gutter: the controls live in this band outside the table. */
+export const TABLE_GUTTER = 20
 const equalGeometry = (a: ChromeGeometry, b: ChromeGeometry) => Object.keys(a).every(key => a[key as keyof ChromeGeometry] === b[key as keyof ChromeGeometry])
 
 /** A React portal into the TableView's non-document controls, not a document node. */
@@ -44,13 +46,13 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
       const tableBounds = table.getBoundingClientRect()
       const cellBounds = cell.getBoundingClientRect()
       const rowBounds = table.rows[selected.top]?.getBoundingClientRect() ?? cellBounds
-      const clampX = (x: number) => Math.max(28, Math.min(bounds.width - 56, x))
+      const clampX = (x: number) => Math.max(TABLE_GUTTER, Math.min(bounds.width - TABLE_GUTTER - 28, x))
       const geometry: ChromeGeometry = {
         column: clampX(cellBounds.left + cellBounds.width / 2 - bounds.left - 14),
-        row: Math.max(28, rowBounds.top + rowBounds.height / 2 - bounds.top - 14),
+        row: Math.max(TABLE_GUTTER, rowBounds.top + rowBounds.height / 2 - bounds.top - 14),
         bottom: tableBounds.bottom - bounds.top,
-        middle: 28 + area.width / 2 - 14,
-        columnStart: Math.max(28, cellBounds.left - bounds.left),
+        middle: TABLE_GUTTER + area.width / 2 - 14,
+        columnStart: Math.max(TABLE_GUTTER, cellBounds.left - bounds.left),
         columnWidth: Math.max(0, Math.min(cellBounds.right, area.right) - Math.max(cellBounds.left, area.left)),
         rowStart: cellBounds.top - bounds.top,
         rowHeight: cellBounds.height,
@@ -73,6 +75,8 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
 
   if (!target || readOnly || !chrome) return null
   const run = (action: TableAction) => {
+    // Menus can outlive the render that opened them; recheck live permissions.
+    if (readOnly || !editor.isEditable) return
     const transaction = tableActionTransaction(editor.state, target, action)
     if (!transaction) {
       if (action !== 'fit') setNotice(en ? 'This change exceeds the note or table limit.' : '已达到表格或笔记容量上限，无法继续添加。')

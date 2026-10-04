@@ -9,6 +9,8 @@ export interface ModalProps {
   children: ReactNode
   footer?: ReactNode
   closeLabel?: string
+  /** Short forms and confirmations use a narrower dialog. */
+  size?: 'small' | 'default'
 }
 
 // Compact and wide views can both mount a dialog. Only the top dialog traps
@@ -29,7 +31,7 @@ function focusFirst(container: HTMLElement): void {
 }
 
 /** A pane-independent dialog with a bounded keyboard focus lifetime. */
-export function Modal({ title, onClose, children, footer, closeLabel = 'Close' }: ModalProps) {
+export function Modal({ title, onClose, children, footer, closeLabel = 'Close', size = 'default' }: ModalProps) {
   const titleId = useId()
   const dialog = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
@@ -81,7 +83,7 @@ export function Modal({ title, onClose, children, footer, closeLabel = 'Close' }
     <style>{jotStyles}</style>
     <div className="jot-modal-backdrop" onMouseDown={event => { backdropPress.current = event.target === event.currentTarget }}
       onClick={event => { if (event.target === event.currentTarget && backdropPress.current) onClose() }}>
-      <div ref={dialog} className="jot-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div ref={dialog} className={`jot-modal${size === 'small' ? ' is-small' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className="jot-modal-header">
           <h2 id={titleId}>{title}</h2>
           <button type="button" className="jot-icon-btn" aria-label={closeLabel} title={closeLabel} onClick={onClose}>

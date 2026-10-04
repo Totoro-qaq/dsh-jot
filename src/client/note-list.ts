@@ -1,4 +1,4 @@
-import type { JotLocale, Note } from './types.js'
+import type { JotLocale, Note, RichNode } from './types.js'
 
 export type NoteDateGroup = 'pinned' | 'today' | 'yesterday' | 'week' | 'earlier'
 export type NoteListRow =
@@ -95,6 +95,56 @@ function firstMatch(text: string, query: string): { start: number; end: number }
     offset = nextOffset
   }
   return null
+}
+
+/**
+ * Derived note text is also the persisted search/agent representation and keeps
+ * its `[x]` task markers. List previews present the words, not that syntax.
+ */
+export function noteListText(text: string): string {
+  return text.replace(/^\[(?:x| )\] /gmu, '').replace(/^-{3}$/gmu, '')
+}
+
+export interface NoteDisplay {
+  /** The saved title, or the first body line when the title is empty. */
+  title: string
+  /** True when the title was borrowed from the body. */
+  derived: boolean
+  /** Preview text, without the borrowed first line. */
+  body: string
+}
+
+/** Untitled notes borrow their first line, as most note apps do; nothing is written back. */
+export function noteDisplay(note: Pick<Note, 'title' | 'text'>, maxTitle = 80): NoteDisplay {
+  const body = noteListText(note.text)
+  if (note.title.trim()) return { title: note.title, derived: false, body }
+  const lines = body.split('\n')
+  const index = lines.findIndex(line => line.trim())
+  if (index < 0) return { title: '', derived: false, body: '' }
+  const first = lines[index]!.replace(/\s+/gu, ' ').trim()
+  let title = ''
+  let count = 0
+  for (const part of segmenter.segment(first)) {
+    if (count++ >= maxTitle) { title += '…'; break }
+    title += part.segment
+  }
+  return { title, derived: true, body: lines.slice(index + 1).join('\n') }
+}
+
+export interface TaskProgress { done: number; total: number }
+
+/** Count checklist items anywhere in a document, including nested lists and table cells. */
+export function taskProgress(node: RichNode | undefined): TaskProgress {
+  const progress = { done: 0, total: 0 }
+  const visit = (current: RichNode) => {
+    if (current.type === 'taskItem') {
+      progress.total++
+      if (current.attrs?.checked === true) progress.done++
+    }
+    for (const child of current.content ?? []) visit(child)
+  }
+  if (node) visit(node)
+  return progress
 }
 
 /** A body hit gets its surrounding context; clipping never divides emoji, surrogate pairs, or combining characters. */

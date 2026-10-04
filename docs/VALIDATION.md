@@ -1,6 +1,67 @@
-# Validation — dsh-jot 0.2.4
+# Validation — dsh-jot
 
-Dates: 2026-10-02 through 2026-10-04 (Asia/Shanghai).
+Dates: 2026-10-02 through 2026-10-04 (Asia/Shanghai). Each section applies only to the version it names.
+
+## 0.2.5 — source checks and bounded official Host acceptance
+
+Verified 2026-10-04 on macOS with Node 22.23.1. `pnpm check` passed with all **246 tests**; Host/Client build and package checks also passed during final prepack. The package declares DSH **0.2.0-rc.2** and **0.2.1-alpha.1** compatibility, including the two runtimes' Cordis and Schemastery versions; development DSH packages use alpha.1. These local results do not assert hosted cross-platform CI or release publication.
+
+The tests cover the Markdown subset and literal HTML/unsafe-link handling, list merging, task indexing, lossy-replacement refusal, agent attribution in a separate sidecar, snapshot tags across store instances, HTTP 304 responses, human-only permanent deletion and attachment cleanup, managed-reference checks inside note writes, and icon consistency. Command regressions cover public shortcut registration, modal/foreign-frame guards, selected-text capture before navigation and activation cleanup. Table regressions cover canonical save responses without losing consecutive undo/redo, width normalization, Escape cancellation of live DOM widths, read-only guards and capacity recovery.
+
+The final review added **16 regressions** to the earlier 230-test candidate: 11 for client snapshot/ETag response ordering and writes crossing pending GETs, and five for command consumption and fresh-note cleanup. A late state response cannot replace a newer accepted snapshot or reinstate state from before a successful write. New waits while the panel is busy and executes once when ready; modal ownership still blocks it. Only a genuinely untouched empty new note is cleaned up: human pin/folder changes and writing then clearing its text preserve the note.
+
+### Frozen package and Host setup
+
+The earlier content-hash-named **0.2.5** archive was installed in isolated Web and Desktop profiles through their corresponding official CLIs; its installed Host and Client hashes matched the build used for the interactions below. The subsequent frozen candidate includes the three review fixes above. It is now installed in the alpha.1 Web profile and the existing isolated rc.2 Desktop test profile; both installed Host/Client hashes match the latest frozen build. Installation and native restart preserve the public fixtures, original notes, profile settings and custom native bindings. Final Web/Desktop UI repetition is recorded separately from installation evidence.
+
+| Artifact | Earlier UI candidate (230 tests) | Frozen source-checked candidate (246 tests) |
+| --- | --- | --- |
+| Package archive | `ed9ab898326624efbc657d19912141e2f6eb3b942badeb650eaa16fc55bbdf95` | `ee00b0f7b96d7d7ce0a3fb05a63f83db8043c68956070f71393161e18b389e3c` |
+| `lib/index.js` | `76b7c31a1d99860077eb56e8f1f917425084630faf3f33763842d3475ce77309` | `76b7c31a1d99860077eb56e8f1f917425084630faf3f33763842d3475ce77309` |
+| `lib/client.js` | `ce435d84cc089c168195355b9b1f323bd686c4810ddba5692ceef670ff6984e6` | `a145697abfaba819f5ad86098f3b077e483c8cf90b0ff8032a235ae5f6785fb9` |
+
+The functional candidate is named `dsh-jot-0.2.5-ee00b0f7b96d.tgz`. After the user's layout review, the wide document's CSS changed only from centered margins to `margin-inline: 0`. The left-aligned candidate is installed in both profiles, with packed/installed bytes matching the build: archive SHA-256 `2aa33638a19cf7e1c7ec890af430a77a1d22b5faea7d73af90149dad4c36d621`, Host `76b7c31a1d99860077eb56e8f1f917425084630faf3f33763842d3475ce77309`, Client `342658328153f31a59ea00150d7945d678b2583a7d991ec50e916dee192a628f`. Its left-alignment/layout checks and refreshed screenshots are pending; the functional observations below identify their actual candidate. README/documentation changes can change the eventual release archive hash without changing compiled bytes; verify both the final distribution and the installed compiled bytes.
+
+The actual Web Host used the official npm **0.2.1-alpha.1** runtime, with telemetry disabled and a separate data Home containing public notes. The authenticated Jot state route returned 200; the AI switch stayed off. The development preview's light/dark/compact checks remain supplemental evidence, not the source of the Host results below.
+
+### Actual Web interactions — earlier candidate, macOS, DSH 0.2.1-alpha.1
+
+These observations used the earlier `ed9ab898…` package / `ce435d84…` Client. Final repetition against the frozen `ee00b0f7…` package / `a145697a…` Client is pending.
+
+- All three commands appeared when searching for Jot in DSH keyboard settings, initially without bindings. The test profile bound **Command+Option+6** to Open, **+7** to New and **+9** to Capture. These are test choices, not defaults shipped by Jot. Open used the full workbench without a Conversation and the compact tab beside an actual Conversation. New focused the title; Enter moved to the body. Capture retained exactly the selected text, `记录目标、范围和行动项`; its dialog blocked background New execution. Open still worked after refresh.
+- In the Host's actual dark theme, gray body text, yellow highlights, the list/editor, menus and table boundaries remained distinguishable. Compact Auto fit kept the table within its own area. This is a visual observation, not a measured contrast audit of every palette combination.
+- Consecutive table history was checked with a real save between each action: **5 × 5 → 4 × 5 → 4 × 4 → 4 × 5 → 5 × 5**, using two Undo and two Redo operations. Saves retained the content and did not clear the remaining redo branch.
+- A physical column drag previewed **160 → 240px**; Escape restored **160px**. A separate committed drag saved **230px**, and Auto fit cleared the fixed column widths.
+
+### Public dialogue and fixture provenance
+
+Two short Chinese/English dialogues were generated through the official bundled rc.2 headless runner, using an existing account in an isolated test Home through the ordinary provider path. The persisted assistant source identifies **deepseek-account / deepseek-flash**, with the existing `high` reasoning selection. Each run completed one step and one model reply, without tool calls or retries; automatic LLM titles were disabled. The two runs reported 605 and 680 tokens. Credentials were neither exported nor copied.
+
+The real Session records were transferred to the public test Homes with the official SessionPersistence read/create/append/flush APIs; their logical event hashes matched the source. In the existing native test Home, the official Workspace/Session APIs account these same two previously generated public Sessions to a new `Jot demo` Workspace without another prompt. Original Session files and note data remained unchanged. Public note fixtures were created with the Store API, and their excerpt notes used direct execution of the real Jot tool to exercise attribution. This does **not** mean the model invoked Jot's tools. Original private notes are excluded from screenshots and public fixtures. Current screenshot replacement and language provenance are recorded separately in [README-DESIGN.md](README-DESIGN.md).
+
+### Native Desktop — macOS, DSH 0.2.0-rc.2
+
+The latest official macOS Desktop available from the production feed on 2026-10-04 is **0.2.0-rc.2**. Its fixed default port collided with an already running test Desktop; a `webserver.port: 0` override in the isolated profile restored successful Host startup. Dependency-wait messages following the original port error were not missing-package evidence. This profile-only workaround does not change the global App.
+
+For native interaction, the existing isolated test profile has a private profile backup. Its Jot directory is temporarily redirected to the separate public fixture directory; original notes remain untouched and no credential is copied. The native window loaded the public fixtures and retained seven notes, including the QA note.
+
+The following physical native interactions used the earlier `ed9ab898…` package, before the final review fixes:
+
+- The test profile's **F6** Open, **F7** New and **F9** Capture bindings executed their respective commands. The Capture dialog blocked background New. These are custom test bindings, not Jot defaults.
+- Table end controls appended a column and a row, with a real save after each step: **4 × 3 → 4 × 4 → 5 × 4**. Undo returned to **4 × 4** at revision 3 and **4 × 3** at revision 4; Redo returned to **4 × 4** at revision 5 and **5 × 4** at revision 6. Two further Undo operations restored **4 × 3**. Persisted JSON grids were checked at the checkpoints.
+
+The earlier Stage Manager thumbnail prevented a valid dark-theme/drag observation. After the user restored the full native window, the final functional `ee00b0f7…` package / `a145697a…` Client was checked separately:
+
+- F6 retained its binding after restart and opened the compact Jot tab beside a Conversation; F7 created a note with title focus. The earlier F9 Capture/dialog-guard observation above is retained as earlier-candidate evidence, not presented as a fresh model-tool run.
+- A full-window dark screenshot made the gray text and yellow highlights visibly readable. This is a bounded visual check, not a measured contrast audit of every color.
+- A physical column drag saved **160 → 220px** at revision 9. Auto fit removed all fixed widths at revision 10.
+- Appending a row saved **5 × 3** at revision 11; physical Undo saved **4 × 3** at revision 12, Redo saved **5 × 3** at revision 13, and Undo restored **4 × 3** at revision 14. Persisted grids were checked.
+
+**Escape cancellation of a live column drag has been exercised in Web and source tests, but not in native Desktop.** The subsequent left-alignment-only CSS candidate still needs its own layout/visual check. The untouched blank QA note is retained; no cleanup or purge was performed during package replacement. Native shutdown by SIGINT stopped the Host while the GUI remained; the identified isolated GUI then received SIGTERM before installation. Input attempted after Host shutdown is not a plugin-interaction result. Remove the temporary note-directory override after final QA.
+
+### Remaining limits
+
+Native Windows/Linux interaction, complete system clipboard/IME behavior and long-term stability remain unverified. A real provider dialogue does not verify model-driven Jot tool use. Source CI, native UI acceptance, README image capture, merge and npm/Release publication are separate outcomes.
 
 ## 0.2.4 — official attachment previews and application opening
 

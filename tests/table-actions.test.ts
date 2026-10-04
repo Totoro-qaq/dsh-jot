@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Editor, type JSONContent } from '@tiptap/core'
-import { closeHistory, history } from '@tiptap/pm/history'
+import { closeHistory, history, redoDepth, undoDepth } from '@tiptap/pm/history'
 import { CellSelection, columnResizingPluginKey, TableMap } from '@tiptap/pm/tables'
 import { createJotExtensions } from '../src/client/editor-extensions.js'
+import { syncEditorContent } from '../src/client/editor-content.js'
 import { persistableTableWidthPlugin } from '../src/client/table-view.js'
 import { selectedTable, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
 import { docToText, MAX_DOC_BYTES, validateRichDoc } from '../src/model.js'
@@ -115,6 +116,60 @@ test('auto fit clears every stored width while preserving marks/spans and suppor
   assert.deepEqual(validateRichDoc(editor.getJSON()), fitted)
 })
 
+test('canonical save responses preserve consecutive table undo/redo instead of adding empty history events', t => {
+  const editor = create([table(4, 3), { type: 'paragraph', content: [
+    { type: 'text', text: 'Marked note', marks: [{ type: 'bold' }] },
+  ] }])
+  editor.registerPlugin(history())
+  t.after(() => editor.destroy())
+  select(editor, 0, 0, 0)
+  apply(editor, 'append-column')
+  apply(editor, 'append-row')
+  const dimensions = () => {
+    const map = TableMap.get(editor.state.doc.child(0))
+    return [map.height, map.width]
+  }
+  const saveResponse = () => {
+    const canonical = validateRichDoc(editor.getJSON())
+    assert.notEqual(JSON.stringify(canonical), JSON.stringify(editor.getJSON()), 'marked text has different canonical JSON key order')
+    assert.equal(syncEditorContent(editor, canonical), false)
+  }
+  assert.deepEqual(dimensions(), [5, 4])
+  assert.equal(undoDepth(editor.state), 2)
+  saveResponse()
+  assert.equal(undoDepth(editor.state), 2)
+  assert.equal(editor.commands.undo(), true)
+  assert.deepEqual(dimensions(), [4, 4])
+  saveResponse()
+  assert.equal(undoDepth(editor.state), 1)
+  assert.equal(redoDepth(editor.state), 1)
+  assert.equal(editor.commands.undo(), true)
+  assert.deepEqual(dimensions(), [4, 3])
+  saveResponse()
+  assert.equal(undoDepth(editor.state), 0)
+  assert.equal(redoDepth(editor.state), 2)
+  assert.equal(editor.commands.redo(), true)
+  assert.deepEqual(dimensions(), [4, 4])
+  saveResponse()
+  assert.equal(redoDepth(editor.state), 1)
+  assert.equal(editor.commands.redo(), true)
+  assert.deepEqual(dimensions(), [5, 4])
+  saveResponse()
+  assert.equal(redoDepth(editor.state), 0)
+})
+
+test('genuine external document changes still synchronize without re-emitting a controlled edit', t => {
+  const editor = create([table(2, 2), paragraph('Before')])
+  t.after(() => editor.destroy())
+  let updates = 0
+  editor.on('update', () => { updates++ })
+  const external = validateRichDoc({ type: 'doc', content: [table(2, 3), paragraph('From another panel')] })
+  assert.equal(syncEditorContent(editor, external), true)
+  assert.deepEqual(validateRichDoc(editor.getJSON()), external)
+  assert.equal(updates, 0)
+  assert.equal(syncEditorContent(editor, external), false)
+})
+
 test('actual width normalization handles fractional drag coordinates and merged zero sentinels without transaction loops', t => {
   const editor = create([{ type: 'table', content: [{ type: 'tableRow', content: [cell('merged', { colspan: 3 })] }] }])
   editor.registerPlugin(persistableTableWidthPlugin())
@@ -167,6 +222,68 @@ test('initially read-only editors still install resize with editable guards, so 
   const blocked = resize.props.handleDOMEvents!.mousedown!.call(resize, { editable: false } as never, {} as MouseEvent)
   assert.equal(blocked, false)
 })
+
+test('Escape cancels a live resize without changing the document or undo history, and restores transient DOM widths', t => {
+  const editor = create([table(2, 2)])
+  editor.registerPlugin(history())
+  t.after(() => editor.destroy())
+  const resize = editor.extensionManager.plugins.find(plugin => plugin.spec.key === columnResizingPluginKey)!
+  editor.registerPlugin(resize)
+  const saved = validateRichDoc(editor.getJSON())
+  editor.view.dispatch(editor.state.tr.setMeta(columnResizingPluginKey, { setHandle: 2 }))
+  editor.view.dispatch(editor.state.tr.setMeta(columnResizingPluginKey, { setDragging: { startX: 100, startWidth: 88 } }))
+  const previous = editor.state
+  assert.equal(resize.props.handleKeyDown!.call(resize, editor.view, { key: 'Escape', isComposing: true } as KeyboardEvent), false)
+  assert.ok(columnResizingPluginKey.getState(editor.state)!.dragging, 'IME cancellation belongs to the input method')
+  let prevented = false
+  const handled = resize.props.handleKeyDown!.call(resize, editor.view, {
+    key: 'Escape', preventDefault() { prevented = true },
+  } as KeyboardEvent)
+  assert.equal(handled, true)
+  assert.equal(prevented, true)
+  assert.equal(columnResizingPluginKey.getState(editor.state)!.dragging, null)
+  assert.deepEqual(validateRichDoc(editor.getJSON()), saved)
+  assert.equal(editor.commands.undo(), false)
+  assertCancelledResizeDom(resize, editor, previous)
+  assert.equal(resize.props.handleKeyDown!.call(resize, editor.view, { key: 'Escape' } as KeyboardEvent), false)
+})
+
+test('revoking edit permission mid-drag restores DOM to persisted widths without making an edit', t => {
+  const editor = create([table(2, 2)])
+  t.after(() => editor.destroy())
+  const resize = editor.extensionManager.plugins.find(plugin => plugin.spec.key === columnResizingPluginKey)!
+  editor.registerPlugin(resize)
+  const saved = validateRichDoc(editor.getJSON())
+  editor.view.dispatch(editor.state.tr.setMeta(columnResizingPluginKey, { setHandle: 2 }))
+  editor.view.dispatch(editor.state.tr.setMeta(columnResizingPluginKey, { setDragging: { startX: 100, startWidth: 88 } }))
+  const previous = editor.state
+  editor.setEditable(false, false)
+  editor.view.dispatch(editor.state.tr.setMeta(columnResizingPluginKey, { setHandle: -1, setDragging: null }))
+  assert.deepEqual(validateRichDoc(editor.getJSON()), saved)
+  assertCancelledResizeDom(resize, editor, previous)
+})
+
+function assertCancelledResizeDom(resize: import('@tiptap/pm/state').Plugin, editor: Editor, previous: typeof editor.state) {
+  // Model the colgroup after upstream displayColumnWidth writes a live drag.
+  const columns = [0, 1].map(() => ({ style: { width: '320px', minWidth: '', setProperty(property: string, value: string) {
+    if (property === 'width') this.width = value
+    if (property === 'min-width') this.minWidth = value
+  } }, nextSibling: null as unknown }))
+  columns[0]!.nextSibling = columns[1]
+  const colgroup = { children: columns, firstChild: columns[0] }
+  const tableDOM = { style: { width: '640px', minWidth: '' }, querySelector: () => colgroup }
+  class Shell { querySelector() { return tableDOM } }
+  const oldElement = globalThis.HTMLElement
+  try {
+    globalThis.HTMLElement = Shell as unknown as typeof HTMLElement
+    const view = { state: editor.state, nodeDOM: () => new Shell() }
+    resize.spec.view!(view as never).update!(view as never, previous)
+    assert.deepEqual(columns.map(column => column.style.width), ['', ''])
+    assert.deepEqual(columns.map(column => column.style.minWidth), ['88px', '88px'])
+    assert.equal(tableDOM.style.width, '')
+    assert.equal(tableDOM.style.minWidth, '176px')
+  } finally { globalThis.HTMLElement = oldElement }
+}
 
 function nearByteLimitEditor() {
   const rows = Array.from({ length: 200 }, () => ({ type: 'tableRow', content: [cell()] }))

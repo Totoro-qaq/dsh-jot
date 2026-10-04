@@ -23,6 +23,21 @@ function syncTableColumns(node: ProseMirrorNode, colgroup: HTMLTableColElement, 
   })
 }
 
+function restoreTableAfterResize(view: EditorView, handle: number) {
+  if (handle < 0 || handle > view.state.doc.content.size) return
+  const resolved = view.state.doc.resolve(handle)
+  for (let depth = resolved.depth; depth > 0; depth--) {
+    const node = resolved.node(depth)
+    if (node.type.spec.tableRole !== 'table') continue
+    const shell = view.nodeDOM(resolved.before(depth))
+    if (!(shell instanceof HTMLElement)) return
+    const table = shell.querySelector<HTMLTableElement>('table')
+    const colgroup = table?.querySelector<HTMLTableColElement>('colgroup')
+    if (table && colgroup) syncTableColumns(node, colgroup, table, TABLE_CELL_MIN_WIDTH)
+    return
+  }
+}
+
 /** Controls stay outside contentDOM, so neither clipboard nor serialization includes them. */
 export class JotTableView extends TableView {
   constructor(node: ProseMirrorNode, cellMinWidth: number, view?: EditorView, attributes: Record<string, unknown> = {}) {
@@ -71,7 +86,28 @@ export const JotTable = Table.extend({
       // Upstream mousemove checks editable, but mousedown also needs a guard if
       // permissions changed while an old resize handle was still active.
       const handlers = plugin.props.handleDOMEvents ?? {}
-      return new Plugin({ ...plugin.spec, props: { ...plugin.props, handleDOMEvents: {
+      return new Plugin({ ...plugin.spec, view: view => {
+        const original = plugin.spec.view?.(view)
+        return {
+          update(current, previous) {
+            original?.update?.(current, previous)
+            const before = columnResizingPluginKey.getState(previous)
+            const after = columnResizingPluginKey.getState(current.state)
+            // Cancelling a drag only changes plugin metadata. NodeView.update
+            // need not run, so discard the upstream live DOM width explicitly.
+            if (before?.dragging && !after?.dragging) restoreTableAfterResize(current, before.activeHandle)
+          },
+          destroy() { original?.destroy?.() },
+        }
+      }, props: { ...plugin.props, handleKeyDown(view, event) {
+        if (event.key === 'Escape' && !event.isComposing && event.keyCode !== 229
+          && columnResizingPluginKey.getState(view.state)?.dragging) {
+          view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setDragging: null }))
+          event.preventDefault()
+          return true
+        }
+        return plugin.props.handleKeyDown?.call(plugin, view, event) ?? false
+      }, handleDOMEvents: {
         ...handlers,
         mousedown: (view, event) => view.editable ? handlers.mousedown?.call(plugin, view, event) : false,
       } } })

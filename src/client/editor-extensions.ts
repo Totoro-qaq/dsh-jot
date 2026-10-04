@@ -22,7 +22,8 @@ const PaletteColor = Color.extend({
       parseHTML: element => normalizePaletteColor(element.style.color, TEXT_COLORS),
       renderHTML: attributes => {
         const color = normalizePaletteColor(attributes.color, TEXT_COLORS)
-        return color ? { style: `color:${color}` } : {}
+        // The stored hex stays portable; data-jot-color lets dark themes remap it for contrast.
+        return color ? { style: `color:${color}`, 'data-jot-color': color } : {}
       },
     } } }]
   },

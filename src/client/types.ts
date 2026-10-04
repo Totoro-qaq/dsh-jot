@@ -24,7 +24,13 @@ export interface Note {
 }
 
 export interface Folder { id: string; name: string }
-export interface JotState { version: 1; notes: Note[]; folders: Folder[]; agentEnabled: boolean }
+export interface AgentEdit { revision: number; at: string }
+export interface JotState {
+  version: 1; notes: Note[]; folders: Folder[]; agentEnabled: boolean
+  /** Present from Hosts that record agent attribution; keyed by note id. */
+  agentEdits?: Record<string, AgentEdit>
+}
+export interface PurgeResult { purged: string[]; attachments: string[] }
 export interface NoteInput { title?: string; content?: RichDoc; folderId?: string | null }
 export interface NotePatch extends NoteInput { revision: number; pinned?: boolean }
 export interface NoteQuery { q?: string; folderId?: string | null; trash?: boolean }
@@ -44,6 +50,10 @@ export interface JotApi {
   updateNote(id: string, patch: NotePatch): Promise<Note>
   deleteNote(id: string, revision: number): Promise<Note>
   restoreNote(id: string, revision: number): Promise<Note>
+  /** Permanently delete one note and files that only it referenced. */
+  purgeNote?(id: string, revision: number): Promise<PurgeResult>
+  /** Permanently delete every note in Trash. */
+  emptyTrash?(): Promise<PurgeResult>
   createFolder(name: string): Promise<Folder>
   updateFolder(id: string, name: string): Promise<Folder>
   deleteFolder(id: string): Promise<void>

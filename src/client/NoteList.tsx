@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { JotActionIcon } from './icons.js'
-import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, nextActiveNoteId, noteDateValue, noteExcerpt } from './note-list.js'
+import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, nextActiveNoteId, noteDateValue, noteDisplay, noteExcerpt, taskProgress } from './note-list.js'
 import type { NavigationKey, NoteDateBasis } from './note-list.js'
 import type { Folder, JotLocale, Note } from './types.js'
 
@@ -22,6 +22,8 @@ export interface NoteListProps {
   dateBasis?: NoteDateBasis
   /** The current folder scope already names this metadata. */
   hideFolderName?: boolean
+  /** Notes whose latest saved revision came from an agent tool. */
+  agentEditedIds?: ReadonlySet<string>
 }
 
 function Highlight({ text, query }: { text: string; query: string }) {
@@ -35,7 +37,7 @@ const noSelectedNotes: ReadonlySet<string> = new Set()
 
 export function NoteList({ notes, selectedId = null, onSelect, query = '', folders = [], locale = 'zh', view,
   selectMode = false, selectedNoteIds = noSelectedNotes, onToggleSelection, onContextMenu, dateBasis = 'modified',
-  hideFolderName = false,
+  hideFolderName = false, agentEditedIds = noSelectedNotes,
 }: NoteListProps) {
   const parent = useRef<HTMLDivElement>(null)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
@@ -119,11 +121,15 @@ export function NoteList({ notes, selectedId = null, onSelect, query = '', folde
           </h3>
         </div>
         const { note } = row
-        const title = note.title || (en ? 'Untitled' : '无标题')
-        const excerpt = noteExcerpt(note.text, needle) || (en ? 'No content yet' : '还没有正文')
+        const display = noteDisplay(note)
+        const title = display.title || (en ? 'Untitled' : '无标题')
+        const excerpt = noteExcerpt(display.body, needle) || (display.derived ? '' : en ? 'No content yet' : '还没有正文')
         const timestamp = noteDateValue(note, dateBasis)
         const date = formatNoteDate(timestamp, locale)
-        const folder = note.folderId === null ? en ? 'Unfiled' : '未分类' : folderNames.get(note.folderId) ?? (en ? 'Unfiled' : '未分类')
+        // Unfiled is the default state, so only a real folder adds information.
+        const folder = note.folderId === null ? '' : folderNames.get(note.folderId) ?? ''
+        const progress = taskProgress(note.content)
+        const agentEdited = agentEditedIds.has(note.id)
         return <div key={item.key} ref={virtualizer.measureElement} data-index={item.index} data-note-id={note.id} role="listitem"
           aria-posinset={row.position} aria-setsize={notes.length}
           className={selectMode ? 'jot-note-selection-row' : undefined}
@@ -143,13 +149,19 @@ export function NoteList({ notes, selectedId = null, onSelect, query = '', folde
             tabIndex={activeId === note.id ? 0 : -1}
             ref={element => { if (element) buttons.current.set(note.id, element); else buttons.current.delete(note.id) }}
             onFocus={() => setActiveId(note.id)} onClick={() => { setActiveId(note.id); activate(note) }}>
-            <span className="jot-note-title"><span><Highlight text={title} query={needle} /></span>
-              {note.pinned && <span className="jot-note-pin" aria-label={en ? 'Pinned' : '已置顶'}><JotActionIcon name="pin" size={12} /></span>}
+            <span className={`jot-note-title${display.title ? '' : ' is-untitled'}`}><span><Highlight text={title} query={needle} /></span>
+              {note.pinned && <span className="jot-note-pin" role="img" aria-label={en ? 'Pinned' : '已置顶'}><JotActionIcon name="pin" size={12} /></span>}
             </span>
-            <div className="jot-note-excerpt" style={{ whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+            {excerpt && <div className="jot-note-excerpt" style={{ whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
               <Highlight text={excerpt} query={needle} />
-            </div>
-            <div className="jot-note-meta"><time dateTime={timestamp}>{date}</time>{!hideFolderName && <span>{folder}</span>}</div>
+            </div>}
+            <div className="jot-note-meta"><time dateTime={timestamp}>{date}</time>
+              {progress.total > 0 && <span className="jot-note-progress" title={en ? `${progress.done} of ${progress.total} to-dos done` : `已完成 ${progress.done} / ${progress.total} 项待办`}
+                aria-label={en ? `${progress.done} of ${progress.total} to-dos done` : `已完成 ${progress.done} / ${progress.total} 项待办`}>
+                <JotActionIcon name="checklist" size={12} />{progress.done}/{progress.total}</span>}
+              {agentEdited && <span className="jot-note-agent" title={en ? 'Last changed by AI' : '最近一次由 AI 修改'}>
+                <JotActionIcon name="sparkle" size={12} />{en ? 'AI edited' : 'AI 修改'}</span>}
+              {!hideFolderName && folder && <span className="jot-note-folder">{folder}</span>}</div>
           </button>
         </div>
       })}

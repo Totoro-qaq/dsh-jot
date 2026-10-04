@@ -404,6 +404,56 @@ export class AttachmentStore {
     }
   }
 
+  /**
+   * Remove attachments that no note references any more. The index is updated
+   * first; a blob left behind by a failed unlink is unreachable and harmless.
+   */
+  async remove(ids: readonly string[]): Promise<number> {
+    const targets = new Set(ids.map(validateAttachmentId))
+    if (!targets.size) return 0
+    const unlock = await this.lock()
+    const indexTemporary = join(this.directory, `.manifest-${randomBytes(16).toString('hex')}.tmp`)
+    try {
+      const previous = await this.load()
+      const removed = previous.attachments.filter(item => targets.has(item.id))
+      if (!removed.length) return 0
+      const manifest: Manifest = { version: 1, attachments: previous.attachments.filter(item => !targets.has(item.id)) }
+      await this.writeSynced(indexTemporary, Buffer.from(JSON.stringify(manifest) + '\n', 'utf8'))
+      await rename(indexTemporary, this.manifestPath)
+      for (const item of removed) {
+        await rm(join(this.directory, `${item.id}.blob`), { force: true }).catch(() => {})
+      }
+      await this.removePreviewFiles(removed.map(item => item.id)).catch(() => {})
+      return removed.length
+    } catch (cause) {
+      if (cause instanceof AttachmentError) throw cause
+      throw new AttachmentError('ATTACHMENT_PERSISTENCE', 'Unused attachments could not be removed.', 500, { cause })
+    } finally {
+      await rm(indexTemporary, { force: true }).catch(() => {})
+      await unlock()
+    }
+  }
+
+  /** Cleanup shares the preview lock and never traverses a replaced cache root. */
+  private async removePreviewFiles(ids: readonly string[]): Promise<void> {
+    const unlock = await this.previewLock()
+    const root = join(this.directory, '.preview')
+    try {
+      let identity
+      try { identity = await lstat(root) }
+      catch (cause) { if (errno(cause, 'ENOENT')) return; throw cause }
+      if (!identity.isDirectory() || identity.isSymbolicLink()) corrupt('The attachment preview directory is not a plain directory.')
+      for (const id of ids) {
+        await this.checkDirectory()
+        const current = await lstat(root)
+        if (!current.isDirectory() || current.isSymbolicLink() || current.ino !== identity.ino || current.dev !== identity.dev) {
+          corrupt('The attachment preview directory changed during cleanup.')
+        }
+        await rm(join(root, id), { recursive: true, force: true })
+      }
+    } finally { await unlock() }
+  }
+
   async get(id: string): Promise<AttachmentInfo> {
     validateAttachmentId(id)
     const manifest = await this.load()
@@ -411,6 +461,17 @@ export class AttachmentStore {
     if (!entry) throw new AttachmentError('ATTACHMENT_NOT_FOUND', 'This attachment is unavailable.', 404)
     return info(entry)
   }
+
+  /** Validate managed references against one manifest read before saving a note. */
+  async assertReferences(ids: readonly string[]): Promise<void> {
+    const references = new Set(ids.map(validateAttachmentId))
+    if (!references.size) return
+    const available = new Set((await this.load()).attachments.map(item => item.id))
+    for (const id of references) if (!available.has(id)) {
+      throw new AttachmentError('ATTACHMENT_NOT_FOUND', 'This attachment is unavailable.', 404)
+    }
+  }
+
   async content(id: string): Promise<{ attachment: AttachmentInfo; bytes: Buffer }> {
     validateAttachmentId(id)
     const manifest = await this.load()

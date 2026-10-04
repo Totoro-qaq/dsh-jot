@@ -4,7 +4,7 @@ Jot is a human-editable notes and lightweight document space inside DeepSeek Har
 
 ## Development
 
-Use Node.js `^22.19.0 || >=24.0.0` and the pnpm version declared in `package.json` (currently 11.22.0). The plugin targets DSH 0.2.0-rc.2; Web and Desktop are separate Host profiles.
+Use Node.js `^22.19.0 || >=24.0.0` and the pnpm version declared in `package.json` (currently 11.22.0). Version 0.2.5 declares DSH 0.2.0-rc.2 and 0.2.1-alpha.1 compatibility; development DSH packages use 0.2.1-alpha.1. Web and Desktop are separate Host profiles, and their actual checks must name the runtime tested.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -14,14 +14,17 @@ pnpm build
 pnpm pack:check
 ```
 
-`pnpm dev` starts a standalone development preview. This is useful for editor work but does not verify native DSH integration. To exercise the built plugin in DSH, create a package with `pnpm pack --pack-destination artifacts` and follow the [installation guide](./README.en.md). Use separate test data and Host profiles for integration checks.
+`pnpm dev` starts a standalone development preview with workbench/sidebar, dark-theme and English toggles. This is useful for editor work but does not verify native DSH integration. Action icons live in `src/client/icons.tsx`; run `pnpm icons` after changing them so the shipped `assets/icons/*.svg` stay in sync (a test enforces this). To exercise the built plugin in DSH, create a package with `pnpm pack --pack-destination artifacts` and follow the [installation guide](./README.en.md). Use separate test data and Host profiles for integration checks.
 
 CI runs the same checks on Linux with Node 22.19.0 and 24, and on Windows and macOS with Node 24. These checks cover source behavior, build output, and package exports. They do not launch native DSH Desktop or a provider-backed agent session.
 
 ## Making a change
 
 - Keep notes editable by the user. Agent access starts off and must honor the current human-controlled permission switch on every call.
-- Preserve revision checks, recovery drafts, authenticated routes, and attachment boundaries. A failed operation must not silently overwrite saved work.
+- Preserve revision checks, recovery drafts, authenticated routes, and attachment boundaries. A failed operation must not silently overwrite saved work, and merely opening a note must not save it.
+- Preserve state-response ordering across concurrent reads and writes. An older GET or 304 must not roll the library back after a newer accepted response or a successful mutation.
+- Clean up only untouched empty new notes. Human edits to pin/folder metadata and writing then clearing text count as edits. A busy panel must retain a pending New command and consume it once when ready; modal ownership still blocks background commands.
+- Keep `jot.json` readable by earlier releases: its note fields are validated strictly, so put new metadata in a separate file (as `jot.activity.json` does).
 - Use DSH's public registrations and scoped plugin styles. Follow the Host's font, theme, and text scaling; check narrow sidebars and wide workbenches for UI changes.
 - Keep native text clipboard behavior and use Command on macOS / Control on Windows and Linux. Acquire Host shortcut overrides only while the relevant editor has focus, and release them afterward.
 - Include a regression test when changing behavior that could lose data or break a documented contract. Avoid tests that only repeat implementation details.
@@ -35,5 +38,13 @@ Include your Jot and DSH versions, operating system, Web/Desktop profile, steps 
 ## Release checks
 
 Before a release, run the checks above, verify the package version and published-file list, and exercise the final packaged bytes in the actual Host. Update the changelog and validation record with the work that was actually checked. Publishing is a separate maintainer action; CI does not publish npm packages automatically.
+
+The current frozen 0.2.5 candidate has passed local checks with **246 tests**, including 11 client cache-ordering and five command/fresh-note lifecycle regressions added after the earlier 230-test UI candidate. Those source results do not transfer earlier Host observations to a changed Client. Keep each archive hash, compiled Host/Client hash and observation together, then repeat the affected UI checks against the installed final build. Documentation and screenshots may change a release archive's hash while its compiled code remains the same; record both.
+
+For UI releases, verify all three Jot commands in the Host's keyboard settings, their initially unbound state, custom binding persistence, full-workbench/sidebar routing, title focus and dialog guards. Check gray text, highlights, menus and table borders in the Host's actual dark theme. Exercise row/column controls, repeated undo/redo with a save between each operation, committed column widths, Escape during a live drag and Auto fit. A preview or a Node test does not replace these interactions.
+
+Use isolated test Homes and public sample notes. Give local packages content-hash filenames and compare installed Host/Client hashes with the frozen build. The official rc.2 Desktop fixes its default port; a separate test profile can override `webserver.port` to `0` when another instance is running. Keep browser data and instance locks separate with `--user-data-dir`; account login remains a separate prerequisite. Never copy account credentials to make a screenshot work.
+
+README images must be captured separately in Chinese and English in a real Host. A sidebar image should show a public, actual provider-backed dialogue. Identify fixtures and direct tool checks accurately; neither proves that the model invoked Jot's tools. Record Windows/Linux native interaction and hosted CI separately from macOS Web/Desktop evidence.
 
 Contributions are distributed under the [MIT license](./LICENSE). Embedded PDF fonts retain their [SIL Open Font License](./assets/fonts/OFL.txt).

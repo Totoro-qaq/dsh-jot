@@ -58,6 +58,8 @@ export interface UpdateNotePatch {
   content?: RichDoc
   /** Append paragraphs without replacing existing formatting or earlier text. */
   appendText?: string
+  /** Append structured blocks without replacing earlier content. */
+  appendContent?: RichDoc
   folderId?: string | null
   pinned?: boolean
 }
@@ -289,4 +291,196 @@ export function docToText(input: RichDoc): string {
     return node.type === 'taskItem' ? `[${node.attrs?.checked ? 'x' : ' '}] ${text}` : text
   }
   return doc.content.map(render).join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Block helpers shared by the store, agent tools and the client. Browser-safe.
+
+const isBlankDoc = (doc: RichDoc): boolean => doc.content.length === 1
+  && doc.content[0]!.type === 'paragraph' && !doc.content[0]!.content?.length
+
+/** True for a new note's single empty paragraph. */
+export function documentIsBlank(doc: RichDoc): boolean { return isBlankDoc(doc) }
+
+const LIST_TYPES = new Set(['bulletList', 'orderedList', 'taskList'])
+
+/**
+ * Append blocks after an existing document. A blank document is replaced, and
+ * a list continuing a list of the same kind joins it, so "add a to-do" extends
+ * the existing checklist instead of starting a second one.
+ */
+export function appendBlocks(existing: readonly RichNode[], added: readonly RichNode[]): RichNode[] {
+  const base = existing.length === 1 && existing[0]!.type === 'paragraph' && !existing[0]!.content?.length ? [] : [...existing]
+  const incoming = [...added]
+  const last = base.at(-1)
+  const first = incoming[0]
+  if (last && first && LIST_TYPES.has(last.type) && last.type === first.type) {
+    base[base.length - 1] = { ...last, content: [...(last.content ?? []), ...(first.content ?? [])] }
+    incoming.shift()
+  }
+  const content = [...base, ...incoming]
+  return content.length ? content : [{ type: 'paragraph' }]
+}
+
+/** Managed attachment ids referenced by images and file cards. */
+export function documentAttachmentIds(doc: RichDoc): Set<string> {
+  const ids = new Set<string>()
+  const visit = (node: RichNode) => {
+    if ((node.type === 'image' || node.type === 'attachment') && typeof node.attrs?.attachmentId === 'string') ids.add(node.attrs.attachmentId)
+    for (const child of node.content ?? []) visit(child)
+  }
+  for (const node of doc.content) visit(node)
+  return ids
+}
+
+/**
+ * Formatting that the agent's Markdown-like text cannot express. Replacing
+ * such a document with text would silently drop tables, files or colors.
+ */
+export function documentHasRichOnlyContent(doc: RichDoc): boolean {
+  const visit = (node: RichNode): boolean => {
+    if (['table', 'image', 'attachment'].includes(node.type)) return true
+    if (node.marks?.some(mark => ['textStyle', 'highlight', 'underline'].includes(mark.type))) return true
+    return (node.content ?? []).some(visit)
+  }
+  return doc.content.some(visit)
+}
+
+export interface DocumentTask { index: number; text: string; checked: boolean }
+
+/** Checklist items in document order; indexes are 1-based for agents and people. */
+export function documentTasks(doc: RichDoc): DocumentTask[] {
+  const tasks: DocumentTask[] = []
+  const text = (node: RichNode): string => node.type === 'text' ? node.text ?? ''
+    : (node.content ?? []).filter(child => !LIST_TYPES.has(child.type)).map(text).join(node.type === 'paragraph' ? '' : ' ')
+  const visit = (node: RichNode) => {
+    if (node.type === 'taskItem') tasks.push({ index: tasks.length + 1, text: text(node).trim(), checked: node.attrs?.checked === true })
+    for (const child of node.content ?? []) visit(child)
+  }
+  for (const node of doc.content) visit(node)
+  return tasks
+}
+
+/** Return a copy with one checklist item changed; the item is chosen by its 1-based index. */
+export function setDocumentTask(doc: RichDoc, index: number, checked: boolean): RichDoc {
+  if (!Number.isSafeInteger(index) || index < 1) invalid('Task index must be a positive integer')
+  let seen = 0
+  let found = false
+  const visit = (node: RichNode): RichNode => {
+    let next = node
+    if (node.type === 'taskItem' && ++seen === index) { next = { ...node, attrs: { ...node.attrs, checked } }; found = true }
+    return next.content ? { ...next, content: next.content.map(visit) } : next
+  }
+  const result: RichDoc = { type: 'doc', content: doc.content.map(visit) }
+  if (!found) throw new StoreError('NOT_FOUND', `Task ${index} was not found; this note has ${seen} checklist items`)
+  return validateRichDoc(result)
+}
+
+// A small Markdown subset for agent-written notes. Unknown syntax stays literal
+// text; nothing here interprets HTML.
+const SAFE_LINK = /^(?:https?:\/\/|mailto:)[^\s\u0000-\u001f]+$/iu
+const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+?\*\*|__[^_\n]+?__)|(~~[^~\n]+?~~)|(\[[^\]\n]+\]\([^)\s]+\))|((?<![\p{L}\p{N}*])\*[^*\s](?:[^*\n]*?[^*\s])?\*(?![\p{L}\p{N}*])|(?<![\p{L}\p{N}_])_[^_\s](?:[^_\n]*?[^_\s])?_(?![\p{L}\p{N}_]))/gu
+
+function inlineNodes(text: string): RichNode[] {
+  const nodes: RichNode[] = []
+  const push = (value: string, marks?: RichMark[]) => {
+    if (!value) return
+    nodes.push(marks?.length ? { type: 'text', text: value, marks } : { type: 'text', text: value })
+  }
+  let offset = 0
+  for (const match of text.matchAll(INLINE)) {
+    const [token] = match
+    const start = match.index!
+    push(text.slice(offset, start))
+    offset = start + token.length
+    if (match[1]) push(token.slice(1, -1), [{ type: 'code' }])
+    else if (match[2]) push(token.slice(2, -2), [{ type: 'bold' }])
+    else if (match[3]) push(token.slice(2, -2), [{ type: 'strike' }])
+    else if (match[4]) {
+      const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/u.exec(token)!
+      if (SAFE_LINK.test(link[2]!) && link[2]!.length <= 2_048) push(link[1]!, [{ type: 'link', attrs: { href: link[2]! } }])
+      else push(token)
+    } else push(token.slice(1, -1), [{ type: 'italic' }])
+  }
+  push(text.slice(offset))
+  return nodes
+}
+
+const paragraphOf = (text: string): RichNode => {
+  const content = inlineNodes(text)
+  return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }
+}
+const TASK_LINE = /^\s*(?:[-*+]\s+)?\[( |x|X)\]\s+(.*)$/u
+const BULLET_LINE = /^\s*[-*+]\s+(.*)$/u
+const ORDERED_LINE = /^\s*(\d{1,6})[.)]\s+(.*)$/u
+const TABLE_LINE = /^\s*\|.*\|\s*$/u
+const TABLE_RULE = /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{0,}:?\s*\|?\s*$/u
+
+function tableCells(line: string): string[] {
+  return line.trim().replace(/^\|/u, '').replace(/\|$/u, '').split('|').map(cell => cell.trim())
+}
+
+/**
+ * Convert agent-written text into a rich document: # headings, - lists,
+ * 1. lists, - [ ] / [x] tasks, > quotes, ``` code, --- rules and | tables,
+ * plus **bold**, *italic*, `code`, ~~strike~~ and [links](https://…).
+ * Every other line becomes a literal paragraph.
+ */
+export function docFromMarkdown(source: string): RichDoc {
+  boundedString(source, MAX_TEXT_LENGTH, 'text')
+  const lines = source.replace(/\r\n?/gu, '\n').split('\n')
+  const blocks: RichNode[] = []
+  const list = (type: 'bulletList' | 'orderedList' | 'taskList', item: RichNode, start?: number) => {
+    const last = blocks.at(-1)
+    if (last?.type === type) last.content!.push(item)
+    else blocks.push({ type, ...(type === 'orderedList' ? { attrs: { start: start ?? 1 } } : {}), content: [item] })
+  }
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!
+    // Blank lines only separate blocks, as in Markdown.
+    if (!line.trim()) continue
+    const fence = /^\s*```\s*([\w+#.-]{0,80})\s*$/u.exec(line)
+    if (fence) {
+      const body: string[] = []
+      while (++index < lines.length && !/^\s*```\s*$/u.test(lines[index]!)) body.push(lines[index]!)
+      const text = body.join('\n')
+      blocks.push({ type: 'codeBlock', attrs: { language: fence[1] || null }, ...(text ? { content: [{ type: 'text', text }] } : {}) })
+      continue
+    }
+    const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*$/u.exec(line)
+    if (heading) {
+      // Closing hashes need a separator; the # in "C#" is literal content.
+      const text = /^#+$/u.test(heading[2]!) ? '' : heading[2]!.replace(/\s+#+$/u, '')
+      blocks.push({ type: 'heading', attrs: { level: heading[1]!.length }, content: inlineNodes(text) })
+      continue
+    }
+    if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/u.test(line)) { blocks.push({ type: 'horizontalRule' }); continue }
+    if (TABLE_LINE.test(line) && index + 1 < lines.length && TABLE_RULE.test(lines[index + 1]!)) {
+      const rows = [tableCells(line)]
+      index++
+      while (index + 1 < lines.length && TABLE_LINE.test(lines[index + 1]!) && rows.length < 200) rows.push(tableCells(lines[++index]!))
+      const width = Math.max(...rows.map(row => row.length))
+      if (width > 50) invalid('Markdown table exceeds the 50-column limit')
+      blocks.push({ type: 'table', content: rows.map((row, rowIndex) => ({ type: 'tableRow', content: Array.from({ length: width }, (_, column) => ({
+        type: rowIndex === 0 ? 'tableHeader' : 'tableCell', content: [paragraphOf(row[column] ?? '')],
+      })) })) })
+      continue
+    }
+    const quote = /^\s{0,3}>\s?(.*)$/u.exec(line)
+    if (quote) {
+      const last = blocks.at(-1)
+      const paragraph = paragraphOf(quote[1]!)
+      if (last?.type === 'blockquote' && lines[index - 1] !== undefined && /^\s{0,3}>/u.test(lines[index - 1]!)) last.content!.push(paragraph)
+      else blocks.push({ type: 'blockquote', content: [paragraph] })
+      continue
+    }
+    const task = TASK_LINE.exec(line)
+    if (task) { list('taskList', { type: 'taskItem', attrs: { checked: task[1] !== ' ' }, content: [paragraphOf(task[2]!)] }); continue }
+    const bullet = BULLET_LINE.exec(line)
+    if (bullet) { list('bulletList', { type: 'listItem', content: [paragraphOf(bullet[1]!)] }); continue }
+    const ordered = ORDERED_LINE.exec(line)
+    if (ordered) { list('orderedList', { type: 'listItem', content: [paragraphOf(ordered[2]!)] }, Math.max(1, Math.min(1_000_000, Number(ordered[1])))); continue }
+    blocks.push(paragraphOf(line))
+  }
+  return validateRichDoc({ type: 'doc', content: blocks.length ? blocks : [{ type: 'paragraph' }] })
 }
