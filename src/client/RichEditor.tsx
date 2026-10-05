@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { Editor } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -12,6 +13,9 @@ import { syncEditorContent } from './editor-content.js'
 import { JotActionIcon, type JotActionIconName } from './icons.js'
 import { TableControls } from './TableControls.js'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../model.js'
+import { applySlashItem, filterSlashItems, slashLabel, slashMatch, type SlashItem, type SlashMatch } from './slash-menu.js'
+import { ariaShortcut, shortcutLabel, SHORTCUTS, withShortcut, type ShortcutId } from './shortcut-labels.js'
+import { jotStyles } from './styles.js'
 import type { JotLocale, RichDoc } from './types.js'
 
 export interface RichEditorProps {
@@ -22,7 +26,11 @@ export interface RichEditorProps {
   locale?: JotLocale
   onReady?: (actions: RichEditorActions | null) => void
   resolveAttachmentUrl?: (attachmentId: string) => string
+  /** Offered in the "/" menu; the host owns the file picker and upload. */
+  onRequestAttachment?: () => void
 }
+
+interface SlashMenuState { match: SlashMatch; items: SlashItem[]; index: number; caret: { left: number; top: number; bottom: number } }
 
 export interface RichEditorActions {
   /** Native bridges must pass the focused target; input fields never format or undo the body. */
@@ -42,12 +50,12 @@ function EditorControlIcon({ name }: { name: 'format' | 'chevron' | 'todo' | 'fi
   return <JotActionIcon name={names[name]} size={16} className={`jot-editor-control-icon jot-editor-control-icon--${name}`} />
 }
 
-export function RichEditor({ value, onChange, onBlur, readOnly = false, locale = 'zh', onReady, resolveAttachmentUrl }: RichEditorProps) {
+export function RichEditor({ value, onChange, onBlur, readOnly = false, locale = 'zh', onReady, resolveAttachmentUrl, onRequestAttachment }: RichEditorProps) {
   const root = useRef<HTMLDivElement>(null)
   const mount = useRef<HTMLDivElement>(null)
   const instance = useRef<Editor | null>(null)
-  const callbacks = useRef({ onChange, onBlur, onReady, resolveAttachmentUrl, readOnly })
-  callbacks.current = { onChange, onBlur, onReady, resolveAttachmentUrl, readOnly }
+  const callbacks = useRef({ onChange, onBlur, onReady, resolveAttachmentUrl, readOnly, locale, onRequestAttachment })
+  callbacks.current = { onChange, onBlur, onReady, resolveAttachmentUrl, readOnly, locale, onRequestAttachment }
   const shortcutHandler = useRef<RichEditorActions['handleShortcut']>(() => false)
   const composing = useRef(false)
   const lastInput = useRef(JSON.stringify(value))
@@ -67,6 +75,42 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
   findState.current = { query: findOpen ? query : '', active: activeMatch }
   const findKey = useRef(new PluginKey<DecorationSet>('jot-document-find'))
   const en = locale === 'en'
+  const [slash, setSlash] = useState<SlashMenuState | null>(null)
+  const slashState = useRef<SlashMenuState | null>(null)
+  slashState.current = slash
+  /** The trigger position the user dismissed with Escape; it stays closed until that trigger is gone. */
+  const slashDismissed = useRef<number | null>(null)
+  const slashMenu = useRef<HTMLDivElement>(null)
+  const [slashPlacement, setSlashPlacement] = useState<{ left: number; top: number } | null>(null)
+  const slashId = useId()
+  const refreshSlash = useRef(() => {})
+  refreshSlash.current = () => {
+    const current = instance.current
+    // Input-method composition holds provisional text; decide again once it is committed.
+    if (!current || current.view.composing) return
+    const match = callbacks.current.readOnly || !current.isFocused ? null : slashMatch(current.state)
+    if (!match) {
+      slashDismissed.current = null
+      if (slashState.current) setSlash(null)
+      return
+    }
+    if (slashDismissed.current === match.from) return
+    const items = filterSlashItems(match.query, { attachments: Boolean(callbacks.current.onRequestAttachment) })
+    if (!items.length) { if (slashState.current) setSlash(null); return }
+    const previous = slashState.current
+    const index = previous?.match.from === match.from && previous.match.query === match.query ? Math.min(previous.index, items.length - 1) : 0
+    const { left, top, bottom } = current.view.coordsAtPos(match.from)
+    setSlash({ match, items, index, caret: { left, top, bottom } })
+  }
+  const chooseSlash = (item: SlashItem) => {
+    const current = instance.current
+    const menu = slashState.current
+    if (!current || !menu || callbacks.current.readOnly) return
+    setSlash(null)
+    applySlashItem(current, menu.match, item.id, { requestAttachment: callbacks.current.onRequestAttachment })
+  }
+  const chooseSlashRef = useRef(chooseSlash)
+  chooseSlashRef.current = chooseSlash
 
   useEffect(() => {
     if (!mount.current) return
@@ -74,9 +118,27 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       element: mount.current,
       content: initial.current,
       editable: !readOnly,
-      extensions: createJotExtensions({ resolveAttachmentUrl: id => callbacks.current.resolveAttachmentUrl?.(id) ?? managedAttachmentUrl(id) }),
+      extensions: createJotExtensions({ resolveAttachmentUrl: id => callbacks.current.resolveAttachmentUrl?.(id) ?? managedAttachmentUrl(id),
+        locale: () => callbacks.current.locale }),
       editorProps: {
         handleKeyDown: (_view, event) => {
+          const menu = slashState.current
+          if (menu && !event.isComposing && event.keyCode !== 229 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              const step = event.key === 'ArrowDown' ? 1 : -1
+              setSlash({ ...menu, index: (menu.index + step + menu.items.length) % menu.items.length })
+              return true
+            }
+            if (event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey)) {
+              chooseSlashRef.current(menu.items[menu.index]!)
+              return true
+            }
+            if (event.key === 'Escape') {
+              slashDismissed.current = menu.match.from
+              setSlash(null)
+              return true
+            }
+          }
           const action = editorShortcut(event)
           if (!action || !shortcutHandler.current(action, event.target)) return false
           event.preventDefault(); event.stopPropagation()
@@ -98,8 +160,9 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
         current.view.dom.setAttribute('data-empty', current.getText().trim() ? 'false' : 'true')
         callbacks.current.onChange(content)
       },
-      onTransaction: () => render(version => version + 1),
-      onBlur: () => callbacks.current.onBlur?.(),
+      onTransaction: () => { render(version => version + 1); refreshSlash.current() },
+      onFocus: () => refreshSlash.current(),
+      onBlur: () => { callbacks.current.onBlur?.(); refreshSlash.current() },
     })
     editor.registerPlugin(new Plugin<DecorationSet>({
       key: findKey.current,
@@ -174,6 +237,38 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
     page.addEventListener('pointerdown', outside, true)
     return () => page.removeEventListener('pointerdown', outside, true)
   }, [formatOpen])
+
+  // The "/" menu is measured after rendering, then placed under the caret or above it near the viewport edge.
+  useLayoutEffect(() => {
+    const element = slashMenu.current
+    if (!slash || !element) { setSlashPlacement(null); return }
+    const view = element.ownerDocument.defaultView
+    if (!view) return
+    const { width, height } = element.getBoundingClientRect()
+    const below = slash.caret.bottom + 4
+    const top = below + height <= view.innerHeight - 8 ? below : Math.max(8, slash.caret.top - 4 - height)
+    const left = Math.min(Math.max(8, slash.caret.left), Math.max(8, view.innerWidth - width - 8))
+    setSlashPlacement(previous => previous?.left === left && previous.top === top ? previous : { left, top })
+  }, [slash])
+  useEffect(() => {
+    const dom = instance.current?.view.dom
+    if (!dom) return
+    // The body keeps its textbox role; these attributes tie it to the open list without changing that role.
+    if (!slash) { for (const name of ['aria-controls', 'aria-activedescendant', 'aria-autocomplete']) dom.removeAttribute(name); return }
+    dom.setAttribute('aria-autocomplete', 'list')
+    dom.setAttribute('aria-controls', slashId)
+    dom.setAttribute('aria-activedescendant', `${slashId}-${slash.items[slash.index]!.id}`)
+  }, [slash, slashId])
+  const slashOpen = slash !== null
+  useEffect(() => {
+    if (!slashOpen) return
+    const page = root.current?.ownerDocument.defaultView
+    const follow = () => refreshSlash.current()
+    page?.addEventListener('scroll', follow, true)
+    page?.addEventListener('resize', follow)
+    return () => { page?.removeEventListener('scroll', follow, true); page?.removeEventListener('resize', follow) }
+  }, [slashOpen])
+  useEffect(() => { slashMenu.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }) }, [slash?.index])
 
   const selectMatch = (next: number) => {
     if (!editor || !matches.length) return
@@ -252,15 +347,20 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
     { id: 'horizontalRule', label: en ? 'Divider' : '分割线', text: '—', active: false, run: () => editor?.chain().focus().setHorizontalRule().run() },
     { id: 'clear', label: en ? 'Clear formatting' : '清除格式', text: '⌫', active: false, run: () => editor?.chain().focus().unsetAllMarks().clearNodes().run() },
   ]
-  const shortcutTitle = (label: string, id: string) => ['bold', 'italic', 'underline'].includes(id)
-    ? `${label} (${editorShortcutLabel(id as 'bold' | 'italic' | 'underline')})` : label
+  /** Tool ids that have a key share the shortcut table's names. */
+  const toolShortcut = (id: string): ShortcutId | undefined => Object.hasOwn(SHORTCUTS, id) ? id as ShortcutId : undefined
+  const shortcutTitle = (label: string, id: string) => withShortcut(label, toolShortcut(id))
   const colorNames = en ? ['Gray', 'Red', 'Orange', 'Green', 'Blue', 'Purple', 'Pink'] : ['灰色', '红色', '橙色', '绿色', '蓝色', '紫色', '粉色']
   const highlightNames = en ? ['Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Pink'] : ['黄色', '橙色', '绿色', '蓝色', '紫色', '粉色']
-  const formatButton = (tool: { id: string; label: string; text: string; active?: boolean; run: () => unknown }, close = true) =>
-    <button key={tool.id} type="button" className={`jot-format jot-format-${tool.id}`}
+  const formatButton = (tool: { id: string; label: string; text: string; active?: boolean; run: () => unknown }, close = true) => {
+    const shortcut = toolShortcut(tool.id)
+    return <button key={tool.id} type="button" className={`jot-format jot-format-${tool.id}`}
       title={shortcutTitle(tool.label, tool.id)} aria-label={tool.label} aria-pressed={Boolean(tool.active)} disabled={readOnly || !editor}
+      aria-keyshortcuts={shortcut ? ariaShortcut(shortcut) : undefined}
       onMouseDown={event => event.preventDefault()} onClick={() => { tool.run(); if (close) setFormatOpen(false) }}>
-      <span className="jot-format-glyph" aria-hidden="true">{tool.text}</span><span>{tool.label}</span></button>
+      <span className="jot-format-glyph" aria-hidden="true">{tool.text}</span><span className="jot-format-label">{tool.label}</span>
+      {shortcut && <kbd className="jot-keys" aria-hidden="true">{shortcutLabel(shortcut)}</kbd>}</button>
+  }
   return (
     <div ref={root} className="jot-rich-editor" onCompositionStart={() => { composing.current = true }}
       onCompositionEnd={() => { composing.current = false }} onKeyDown={event => {
@@ -281,9 +381,10 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
         </button>
         {marks.map(tool => <button key={tool.id} type="button" className={`jot-format jot-editor-control jot-editor-control-icon-only jot-format-${tool.id}`}
           aria-label={tool.label} title={shortcutTitle(tool.label, tool.id)} aria-pressed={Boolean(tool.active)} disabled={readOnly || !editor}
-          onMouseDown={event => event.preventDefault()} onClick={() => tool.run()}>{tool.text}</button>)}
+          aria-keyshortcuts={ariaShortcut(tool.id)} onMouseDown={event => event.preventDefault()} onClick={() => tool.run()}>{tool.text}</button>)}
         <button type="button" className="jot-format jot-editor-control jot-editor-control-icon-only jot-format-taskList" aria-label={en ? 'To-do list' : '待办清单'}
-          title={en ? 'To-do list' : '待办清单'} aria-pressed={Boolean(editor?.isActive('taskList'))} disabled={readOnly || !editor}
+          title={withShortcut(en ? 'To-do list' : '待办清单', 'taskList')} aria-keyshortcuts={ariaShortcut('taskList')}
+          aria-pressed={Boolean(editor?.isActive('taskList'))} disabled={readOnly || !editor}
           onMouseDown={event => event.preventDefault()} onClick={() => editor?.chain().focus().toggleTaskList().run()}>
           <EditorControlIcon name="todo" />
         </button>
@@ -362,6 +463,22 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       </div>}
       <div className="jot-editor-mount" ref={mount} />
       {editor && <TableControls editor={editor} readOnly={readOnly} en={en} />}
+      {slash && globalThis.document && createPortal(<div className="jot-overlay-root">
+        <style>{jotStyles}</style>
+        <div ref={slashMenu} id={slashId} role="listbox" aria-label={en ? 'Insert' : '插入'} className="jot-slash-menu"
+          style={{ left: slashPlacement?.left ?? 0, top: slashPlacement?.top ?? 0, visibility: slashPlacement ? 'visible' : 'hidden' }}
+          onMouseDown={event => event.preventDefault()}>
+          {slash.items.map((item, index) => <div key={item.id} id={`${slashId}-${item.id}`} role="option" aria-selected={index === slash.index}
+            className={`jot-slash-item${index === slash.index ? ' is-active' : ''}`}
+            onMouseMove={() => { if (index !== slash.index) setSlash({ ...slash, index }) }} onClick={() => chooseSlash(item)}>
+            <span className={`jot-format-glyph jot-slash-glyph-${item.id}`} aria-hidden="true">
+              {item.icon ? <JotActionIcon name={item.icon} size={14} /> : item.glyph}</span>
+            <span className="jot-slash-label">{slashLabel(item, locale)}</span>
+            {item.shortcut && <kbd className="jot-keys" aria-hidden="true">{shortcutLabel(item.shortcut)}</kbd>}
+          </div>)}
+          <div className="jot-slash-hint" aria-hidden="true">{en ? '↑↓ choose · Enter insert · Esc close' : '↑↓ 选择 · 回车插入 · Esc 关闭'}</div>
+        </div>
+      </div>, globalThis.document.body)}
     </div>
   )
 }

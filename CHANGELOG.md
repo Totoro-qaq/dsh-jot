@@ -2,7 +2,38 @@
 
 ## Unreleased — 0.2.6 development
 
-- Add `/jot` through the official client slash action. Bare Enter and menu selection open Jot beside the current conversation, consuming the command token while preserving other draft text and attachments.
+### Writing
+
+- Type `/` on an otherwise empty line for an insert menu: body text, headings 1–3, to-do list, bullet and numbered lists, quote, code block, table, divider and **Image or file**. The Chinese input method's `、` (the same key) opens it too, and the filter matches Chinese, English and pinyin initials. A `/` or `、` inside a sentence, or in a table, stays literal.
+- Mod+Enter checks or unchecks the to-do holding the caret; Alt+Shift+↑/↓ moves the current list or to-do item within its own list.
+- **Style** shows each block and text shortcut beside its row, toolbar tooltips include them, and `?` (or **Sort and options → Keyboard shortcuts**) opens a reference of every key Jot handles, including where to bind the three DSH commands.
+
+### Organizing and export
+
+- `/jot` now opens a picker: **Open Jot** stays preselected, so Enter twice behaves as before, and **New note** or any pinned or recent note opens directly in the conversation's sidebar tab. A stale picker cannot act in another conversation, and a failed note list still offers Open and New.
+- **Export all notes…** packages every note, or the selected folder, into one ZIP of Word, PDF or Markdown files sorted into folders. Word and PDF embed PNG/JPEG images; every referenced file is also included once as its original. Up to 2,000 notes, 500 as PDF, and 200 MiB.
+- Moving several selected notes to Trash no longer asks for confirmation; the notice offers **Undo** for the whole batch, matching single notes.
+- An empty search names where matches do exist (other folders or Trash) and switches there in one click, keeping the search words. Searching from Recent already covers every note, which the old hint implied it did not.
+- The list count reads “6 notes” rather than a bare number.
+
+### AI collaboration
+
+- **Undo AI edits**: select the **AI edited** label, or use **More note actions**, to restore the version from before the latest run of agent edits as a new human revision. Consecutive agent edits are undone together. Only the user can undo, including with AI access off. The earlier version is kept per note in `jot.agent-undo/`, separate from `jot.json`, so older plugin versions read notes unchanged.
+- With AI collaboration on, the editor toolbar shows a small reminder icon on notes without an **AI edited** label.
+
+### Fixed
+
+- To-do checkboxes announced English labels (“Task item checkbox for …”) twice in the Chinese interface. Labels follow the interface language, and the duplicate hidden text is no longer exposed.
+- Mod+Alt+4/5/6 created H4–H6 headings that the Style menu could neither show nor offer. Those keys no longer apply; stored H4–H6 still render and export.
+- Tables in the compact pane sat a few pixels right of the body text. The table control band now shrinks to the body padding, keeping tables aligned in every width.
+
+### Verification
+
+Local `pnpm check` passes with the new editor-key, slash-menu, agent-undo and library-export tests, and the features were exercised in the `pnpm dev` preview in light and dark themes and both widths. They have **not** yet been checked in an actual DSH Host; in particular the new editor keys may be handled first by the Desktop Host or the operating system.
+
+### Earlier in this cycle
+
+- Add `/jot` through the official client slash surface. It consumes the command token while preserving other draft text and attachments.
 - Keep this contribution isolated from existing Jot entries when the slash service is absent or a client command name is already occupied; stale session invocations cannot navigate another conversation.
 
 ## 0.2.5 — 2026-10-05

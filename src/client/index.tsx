@@ -100,7 +100,17 @@ export function apply(ctx: Context): void {
       isCurrentSession: sessionId => ctx.uiSession.adapter.current.getSnapshot().key === sessionId
         && ctx.sidebarRight.mounted.getSnapshot() === sessionId && ctx.layout.panelInfo.getSnapshot().activePanelId === null,
       blocked: () => hasJotSlashModal(typeof document === 'undefined' ? undefined : document),
-      open: session => ctx.sidebarRight.openTabIn(session.sessionId, TAB_KIND),
+      loadLibrary: () => defaultJotApi.getState(),
+      open: (session, choice) => {
+        ctx.sidebarRight.openTabIn(session.sessionId, TAB_KIND)
+        if (choice.action === 'open') return
+        // New and a chosen note go to the tab that just opened, through the same claim as keyboard commands.
+        const tab = ctx.sidebarRight.active()
+        if (!tab || tab.kind !== TAB_KIND || ctx.sidebarRight.mounted.getSnapshot() !== session.sessionId) return
+        const recipient = { sessionId: session.sessionId, tabId: tab.id, signal: ctx.sidebarRight.tabDomain.occurrence(session.sessionId, tab).signal }
+        commands.send(choice.action === 'new' ? { action: 'new', target: 'compact', recipient }
+          : { action: 'open-note', target: 'compact', recipient, noteId: choice.noteId })
+      },
     }), 'dsh-jot: slash action')
   })
   // LocaleRuntime exposes prototype methods; retaining their owning object is required.

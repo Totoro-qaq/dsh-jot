@@ -11,8 +11,13 @@ interface ChromeGeometry {
   columnStart: number; columnWidth: number; rowStart: number; rowHeight: number
 }
 interface TableChrome { mount: HTMLElement; geometry: ChromeGeometry }
-/** Matches --jot-table-gutter: the controls live in this band outside the table. */
+/** The widest --jot-table-gutter: the controls live in this band outside the table. */
 export const TABLE_GUTTER = 20
+/** Narrow panes shrink the band to their body padding so tables stay aligned with the text. */
+export function tableGutter(shell: Element): number {
+  const value = Number.parseFloat(shell.ownerDocument.defaultView?.getComputedStyle(shell).paddingTop ?? '')
+  return Number.isFinite(value) && value > 0 ? Math.min(TABLE_GUTTER, value) : TABLE_GUTTER
+}
 const equalGeometry = (a: ChromeGeometry, b: ChromeGeometry) => Object.keys(a).every(key => a[key as keyof ChromeGeometry] === b[key as keyof ChromeGeometry])
 
 /** A React portal into the TableView's non-document controls, not a document node. */
@@ -46,13 +51,14 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
       const tableBounds = table.getBoundingClientRect()
       const cellBounds = cell.getBoundingClientRect()
       const rowBounds = table.rows[selected.top]?.getBoundingClientRect() ?? cellBounds
-      const clampX = (x: number) => Math.max(TABLE_GUTTER, Math.min(bounds.width - TABLE_GUTTER - 28, x))
+      const gutter = tableGutter(shell)
+      const clampX = (x: number) => Math.max(gutter, Math.min(bounds.width - gutter - 28, x))
       const geometry: ChromeGeometry = {
         column: clampX(cellBounds.left + cellBounds.width / 2 - bounds.left - 14),
-        row: Math.max(TABLE_GUTTER, rowBounds.top + rowBounds.height / 2 - bounds.top - 14),
+        row: Math.max(gutter, rowBounds.top + rowBounds.height / 2 - bounds.top - 14),
         bottom: tableBounds.bottom - bounds.top,
-        middle: TABLE_GUTTER + area.width / 2 - 14,
-        columnStart: Math.max(TABLE_GUTTER, cellBounds.left - bounds.left),
+        middle: gutter + area.width / 2 - 14,
+        columnStart: Math.max(gutter, cellBounds.left - bounds.left),
         columnWidth: Math.max(0, Math.min(cellBounds.right, area.right) - Math.max(cellBounds.left, area.left)),
         rowStart: cellBounds.top - bounds.top,
         rowHeight: cellBounds.height,

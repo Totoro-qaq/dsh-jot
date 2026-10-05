@@ -11,14 +11,17 @@ import { JotIcon } from './JotIcon.js'
 import { Modal } from './Modal.js'
 import { AttachmentPreview } from './AttachmentPreview.js'
 import { CaptureDialog, type CaptureSubmission } from './CaptureDialog.js'
+import { ShortcutHelp } from './ShortcutHelp.js'
+import { ExportDialog } from './ExportDialog.js'
 import { appendExcerpt, duplicateNoteInput, sortNotes, type NoteSortMode } from './note-actions.js'
 import { downloadNote } from './downloads.js'
 import { describeError } from './errors.js'
 import { jotStyles } from './styles.js'
 import { NoteList } from './NoteList.js'
+import { noteMatchesQuery, searchElsewhere } from './note-list.js'
 import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note-handoff.js'
 import { consumeJotCommand, type JotCommandRequest } from './commands.js'
-import type { AttachmentInfo, ExportFormat, JotApi, JotLocale, JotState, Note, RichNode } from './types.js'
+import type { AttachmentInfo, ExportFormat, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
 import type { AttachmentDialogRequest } from './attachment-dialog.js'
 
 export interface JotAppProps {
@@ -125,8 +128,11 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const pendingCapture = useRef<{ key: string; noteId: string } | null>(null)
   const [moveOpen, setMoveOpen] = useState(false)
   const [moveFolder, setMoveFolder] = useState('')
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [purgeConfirm, setPurgeConfirm] = useState<'note' | 'trash' | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const [revertConfirm, setRevertConfirm] = useState(false)
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentInfo | null>(null)
   const attachmentRequest = useRef<AbortController | null>(null)
   useEffect(() => () => { if (mode === 'compact') attachmentRequest.current?.abort() }, [mode])
@@ -552,18 +558,35 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     finally { if (mounted.current) setBusy(false) }
   }
 
+  /** A note picked in "/jot": it may be newer than this panel's last poll, or already in Trash. */
+  const openNoteById = (id: string | undefined) => {
+    if (!id) return
+    const show = (note: Note) => {
+      setView(note.deletedAt ? 'trash' : current => current === 'trash' ? 'recent' : current)
+      setQuery('')
+      selectNote(note)
+    }
+    const known = snapshotRef.current?.notes.find(note => note.id === id)
+    if (known) show(known)
+    else void perform(async () => { show(await api.getNote(id)) })
+  }
+
   // Host commands are delivered once; the panel that receives them acknowledges.
   const handledCommand = useRef(0)
   useEffect(() => {
     handledCommand.current = consumeJotCommand(commandRequest, {
       ready: Boolean(snapshot), busy, lastHandled: handledCommand.current,
-      blocked: captureOpen || moveOpen || bulkDeleteOpen || Boolean(purgeConfirm) || Boolean(attachmentPreview),
+      blocked: captureOpen || moveOpen || helpOpen || exportOpen || revertConfirm || Boolean(purgeConfirm) || Boolean(attachmentPreview),
     }, {
       claim: onCommandClaim,
       acknowledge: onCommandHandled,
-      run: request => { if (request.action === 'new') newNote(); else openCapture(request.text ?? '') },
+      run: request => {
+        if (request.action === 'new') newNote()
+        else if (request.action === 'open-note') openNoteById(request.noteId)
+        else openCapture(request.text ?? '')
+      },
     })
-  }, [commandRequest, snapshot, busy, captureOpen, moveOpen, bulkDeleteOpen, purgeConfirm, attachmentPreview])
+  }, [commandRequest, snapshot, busy, captureOpen, moveOpen, helpOpen, exportOpen, revertConfirm, purgeConfirm, attachmentPreview])
 
   const duplicateNote = () => void perform(async () => {
     const current = draftRef.current
@@ -617,8 +640,23 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     }
   })
 
+  /** Several notes come back from Trash at once; each keeps the revision its own deletion produced. */
+  const restoreMany = (targets: readonly { id: string; revision: number }[]) => void perform(async () => {
+    let restored = 0
+    try {
+      for (const target of targets) { await api.restoreNote(target.id, target.revision); restored++ }
+      await refresh()
+      showToast(copy(`已恢复 ${restored} 条笔记`, `Restored ${restored} notes`))
+    } catch (cause) {
+      await refresh()
+      throw new Error(`${copy(`已恢复 ${restored} 条。`, `Restored ${restored}.`)} ${describeError(cause, locale)}`)
+    }
+  })
+
+  /** Like a single note, a batch moves to Trash without a question and offers Undo. */
   const deleteSelected = () => void perform(async () => {
-    let completed = 0
+    const deleted: { id: string; revision: number }[] = []
+    const undo = () => ({ label: copy('撤销', 'Undo'), run: () => restoreMany(deleted) })
     try {
       for (const id of [...selectedIds]) {
         const current = draftRef.current
@@ -631,14 +669,17 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         if (sharedDraftStorage.all(id).length) throw new Error(copy('这条笔记还有保留的草稿，请先打开并处理。', 'Resolve this note’s kept drafts before deleting.'))
         const before = await api.getNote(id)
         if (before.deletedAt) continue
-        await api.deleteNote(id, before.revision)
-        completed++
+        const removed = await api.deleteNote(id, before.revision)
+        deleted.push({ id: removed.id, revision: removed.revision })
       }
-      setBulkDeleteOpen(false); setSelectedIds(new Set()); setSelectMode(false)
-      await refresh(); showToast(copy(`已将 ${completed} 条笔记移到回收站`, `Moved ${completed} notes to Trash`))
+      setSelectedIds(new Set()); setSelectMode(false)
+      await refresh()
+      showToast(copy(`已将 ${deleted.length} 条笔记移到回收站`, `Moved ${deleted.length} notes to Trash`), deleted.length ? undo() : undefined)
     } catch (cause) {
       await refresh()
-      throw new Error(`${copy(`已处理 ${completed} 条。`, `Processed ${completed}.`)} ${describeError(cause, locale)}`)
+      // Notes already moved stay recoverable from the same toast.
+      if (deleted.length) showToast(copy(`已将 ${deleted.length} 条笔记移到回收站`, `Moved ${deleted.length} notes to Trash`), undo())
+      throw new Error(`${copy(`已处理 ${deleted.length} 条。`, `Processed ${deleted.length}.`)} ${describeError(cause, locale)}`)
     }
   })
 
@@ -697,6 +738,40 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     if (mounted.current && !controller.signal.aborted) setAttachmentPreview(attachment)
   })
 
+  /** Restore the version from before the latest run of AI edits; the note must be showing that AI version. */
+  const revertAgent = () => void perform(async () => {
+    const current = draftRef.current
+    if (!current || current.dirty || !api.revertAgentEdit) return
+    const saved = await api.revertAgentEdit(current.noteId, current.baseRevision)
+    selectionGeneration.current++
+    const next = draftFromNote(saved)
+    drafts.current.set(saved.id, next)
+    if (draftRef.current?.noteId === saved.id) installDraft(next)
+    setStatus(saved.id, { phase: 'saved' })
+    setRevertConfirm(false)
+    await refresh()
+    showToast(copy('已撤销 AI 的修改', 'AI edits undone'))
+  })
+
+  /** Unsaved writing is saved first so the archive matches what is on screen. */
+  const exportLibrary = async (format: LibraryExportFormat) => {
+    if (busy || !api.exportLibrary) return
+    setBusy(true); setExportError('')
+    storage.set('dsh-jot:export-format:v1', format)
+    try {
+      const current = draftRef.current
+      if (current?.dirty && statusesRef.current[current.noteId]?.phase !== 'conflict') await saveDraft(current.noteId)
+      const folderId = folderFilter === '__all__' ? undefined : folderFilter === '__unfiled__' ? null : folderFilter
+      const result = await api.exportLibrary({ format, locale, ...folderId === undefined ? {} : { folderId } })
+      downloadNote(result)
+      setExportOpen(false)
+      showToast(result.attachments
+        ? copy(`已导出 ${result.notes} 篇笔记和 ${result.attachments} 个附件`, `Exported ${result.notes} notes and ${result.attachments} files`)
+        : copy(`已导出 ${result.notes} 篇笔记`, `Exported ${result.notes} notes`))
+    } catch (cause) { setExportError(describeError(cause, locale)) }
+    finally { if (mounted.current) setBusy(false) }
+  }
+
   const toggleAgent = () => void perform(async () => {
     const enabled = !snapshot?.agentEnabled
     await api.setAgentEnabled(enabled); await refresh()
@@ -713,20 +788,30 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const hasFolders = Boolean(snapshot?.folders.length)
   const effectiveSort: NoteSortMode = view === 'recent' && !query.trim() ? 'modified' : sortMode
   const visibleNotes = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase()
     const notes = (snapshot?.notes ?? []).filter(note => {
       if ((note.deletedAt !== null) !== (view === 'trash')) return false
       if (folderFilter === '__unfiled__' && note.folderId !== null) return false
       if (!folderFilter.startsWith('__') && note.folderId !== folderFilter) return false
-      return !normalized || note.title.toLocaleLowerCase().includes(normalized) || note.text.toLocaleLowerCase().includes(normalized)
+      return noteMatchesQuery(note, query)
     })
     const sorted = sortNotes(notes, effectiveSort, query)
-    if (view !== 'recent' || normalized) return sorted
+    if (view !== 'recent' || query.trim()) return sorted
     return [...sorted.filter(note => note.pinned), ...sorted.filter(note => !note.pinned).slice(0, 5)]
   }, [snapshot, view, folderFilter, query, effectiveSort])
+  // Recent already searches every note, so an empty search names the scopes that do hide matches.
+  const elsewhere = useMemo(() => visibleNotes.length || !query.trim() ? null
+    : searchElsewhere(snapshot?.notes ?? [], query, { trash: view === 'trash', folderFiltered: folderFilter !== '__all__' }),
+  [visibleNotes, snapshot, query, view, folderFilter])
   const trashCount = useMemo(() => (snapshot?.notes ?? []).filter(note => note.deletedAt !== null).length, [snapshot])
   const agentEditedIds = useMemo(() => new Set((snapshot?.notes ?? [])
     .filter(note => snapshot?.agentEdits?.[note.id]?.revision === note.revision).map(note => note.id)), [snapshot])
+  const agentEdited = Boolean(draft && !draft.dirty && agentEditedIds.has(draft.noteId))
+  const agentUndoable = agentEdited && !selectedDeleted && Boolean(api.revertAgentEdit) && snapshot?.agentEdits?.[draft!.noteId]?.undo === true
+  const exportable = (snapshot?.notes ?? []).filter(note => note.deletedAt === null && (folderFilter === '__all__'
+    || (folderFilter === '__unfiled__' ? note.folderId === null : note.folderId === folderFilter))).length
+  const exportScope = folderFilter === '__all__' ? copy(`全部 ${exportable} 篇笔记`, `all ${exportable} notes`)
+    : folderFilter === '__unfiled__' ? copy(`未分类的 ${exportable} 篇笔记`, `${exportable} unfiled notes`)
+      : copy(`「${actualFolder?.name ?? ''}」里的 ${exportable} 篇笔记`, `${exportable} notes in “${actualFolder?.name ?? ''}”`)
 
   useEffect(() => { setSelectedIds(new Set()); setSelectMode(false); setContextPosition(null) }, [view, folderFilter, query])
 
@@ -755,6 +840,10 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       onSelect: () => { setSelectMode(value => !value); setSelectedIds(new Set()) } }] : []),
     ...(!hasFolders ? [{ label: copy('新建文件夹…', 'New folder…'), icon: 'new-folder' as const, disabled: busy,
       onSelect: () => { setFolderForm('create'); setFolderName(''); setFolderDeleteConfirm(false) } }] : []),
+    ...(view !== 'trash' && api.exportLibrary ? [{ label: folderFilter === '__all__' ? copy('导出全部笔记…', 'Export all notes…') : copy('导出这些笔记…', 'Export these notes…'),
+      icon: 'export' as const, disabled: busy || exportable === 0, onSelect: () => { setExportError(''); setExportOpen(true) } }] : []),
+    { separator: true } as const,
+    { label: copy('键盘快捷键', 'Keyboard shortcuts'), onSelect: () => setHelpOpen(true) },
     ...(view === 'trash' && api.emptyTrash ? [{ label: copy('清空回收站…', 'Empty Trash…'), icon: 'trash' as const, danger: true,
       disabled: busy || trashCount === 0, onSelect: () => setPurgeConfirm('trash') }] : []),
   ]
@@ -775,6 +864,8 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     ...(api.purgeNote ? [{ separator: true } as const,
       { label: copy('永久删除…', 'Delete permanently…'), icon: 'trash' as const, danger: true, disabled: busy, onSelect: () => setPurgeConfirm('note') }] : []),
   ] : [
+    ...(agentUndoable ? [{ label: copy('撤销 AI 的修改…', 'Undo AI edits…'), icon: 'restore' as const, disabled: busy, onSelect: () => setRevertConfirm(true) },
+      { separator: true } as const] : []),
     { label: draft.pinned ? copy('取消置顶', 'Unpin') : copy('置顶', 'Pin'), icon: 'pin', onSelect: () => patchDraft({ pinned: !draftRef.current?.pinned }), disabled: busy },
     ...(hasFolders ? [{ label: copy('移动到文件夹…', 'Move to folder…'), icon: 'folder' as const, onSelect: () => { setMoveFolder(draftRef.current?.folderId ?? ''); setMoveOpen(true) }, disabled: busy }] : []),
     { label: copy('复制笔记', 'Duplicate note'), icon: 'duplicate', onSelect: duplicateNote, disabled: busy },
@@ -790,7 +881,6 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       : savePhase === 'conflict' ? copy('草稿已保留', 'Draft kept')
         : draft?.dirty ? copy('未保存', 'Unsaved') : copy('已保存', 'Saved')
   const saveActionable = Boolean(draft && !selectedDeleted && draft.dirty && (savePhase === 'dirty' || savePhase === 'error'))
-  const agentEdited = Boolean(draft && !draft.dirty && agentEditedIds.has(draft.noteId))
   const listLabel = (count: number) => en ? `${count} ${count === 1 ? 'note' : 'notes'}` : `${count} 条`
 
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -879,7 +969,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
               {item === 'recent' ? copy('最近', 'Recent') : item === 'all' ? copy('全部', 'All') : copy('回收站', 'Trash')}
             </button>)}
           </div>
-          {snapshot && <span className="jot-list-total" title={query ? copy(`${visibleNotes.length} 条搜索结果`, `${visibleNotes.length} results`) : listLabel(visibleNotes.length)}>{visibleNotes.length}</span>}
+          {snapshot && <span className="jot-list-total" title={query.trim() ? copy(`${visibleNotes.length} 条搜索结果`, `${visibleNotes.length} results`) : listLabel(visibleNotes.length)}>{listLabel(visibleNotes.length)}</span>}
           <ActionMenu triggerLabel={copy('排序与选项', 'Sort and options')} triggerIcon="sort" items={listMenuItems} />
         </div>
       </div>
@@ -887,7 +977,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         <span>{copy(`已选择 ${selectedIds.size} 条`, `${selectedIds.size} selected`)}</span>
         <button className="jot-text-btn" type="button" onClick={() => setSelectedIds(new Set(visibleNotes.map(note => note.id)))}>{copy('全选', 'Select all')}</button>
         {hasFolders && <button className="jot-text-btn" type="button" disabled={busy || !selectedIds.size} onClick={() => { setMoveFolder(''); setMoveOpen(true) }}>{copy('移动', 'Move')}</button>}
-        <button className="jot-text-btn jot-danger" type="button" disabled={busy || !selectedIds.size} onClick={() => setBulkDeleteOpen(true)}>{copy('移到回收站', 'Trash')}</button>
+        <button className="jot-text-btn jot-danger" type="button" disabled={busy || !selectedIds.size} onClick={deleteSelected}>{copy('移到回收站', 'Trash')}</button>
         <button className="jot-text-btn" type="button" onClick={() => { setSelectMode(false); setSelectedIds(new Set()) }}>{copy('完成', 'Done')}</button>
       </div>}
       {query.trim() && visibleNotes.length > 0 && <div className="jot-list-label jot-search-label">{copy('搜索结果 · 标题命中优先', 'Results · title matches first')}</div>}
@@ -897,9 +987,18 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         onContextMenu={(note, event) => { event.preventDefault(); if (!selectMode) { selectNote(note); setContextPosition({ x: event.clientX, y: event.clientY }) } }}
         dateBasis={effectiveSort === 'title' ? 'none' : effectiveSort} query={query} folders={snapshot?.folders} locale={locale} view={view} /> : <div className="jot-note-list">
         {snapshot && <div className="jot-empty">
-          <div className="jot-empty-title">{query ? copy('没有找到笔记', 'No notes found') : view === 'trash' ? copy('回收站是空的', 'Trash is empty') : copy('留一点想法在这里', 'Leave a thought here')}</div>
-          <p>{query ? copy('试试其他关键词，或到「全部」里找找。', 'Try another word, or look in All.') : view === 'trash' ? copy('移到回收站的笔记会留在这里，可以恢复。', 'Notes you move to Trash wait here and can be restored.') : copy('一句提醒，一张清单，或者还没想完的事。', 'A reminder, a list, or something still taking shape.')}</p>
-          {!query && view !== 'trash' && <button className="jot-btn jot-primary" type="button" onClick={newNote} disabled={busy}>{copy('新建笔记', 'New note')}</button>}
+          <div className="jot-empty-title">{query.trim() ? copy('没有找到笔记', 'No notes found') : view === 'trash' ? copy('回收站是空的', 'Trash is empty') : copy('留一点想法在这里', 'Leave a thought here')}</div>
+          {elsewhere ? elsewhere.otherFolders > 0 ? <>
+            <p>{copy(`当前文件夹里没有，其他文件夹有 ${elsewhere.otherFolders} 条。`, `Nothing in this folder; ${elsewhere.otherFolders} in other folders.`)}</p>
+            <button className="jot-btn" type="button" onClick={() => setFolderFilter('__all__')}>{copy('在全部文件夹中搜索', 'Search all folders')}</button>
+          </> : elsewhere.otherView > 0 ? <>
+            <p>{view === 'trash' ? copy(`笔记里有 ${elsewhere.otherView} 条匹配。`, `${elsewhere.otherView} matching notes outside Trash.`)
+              : copy(`回收站里有 ${elsewhere.otherView} 条匹配。`, `${elsewhere.otherView} matching notes in Trash.`)}</p>
+            <button className="jot-btn" type="button" onClick={() => { setFolderFilter('__all__'); setView(view === 'trash' ? 'all' : 'trash') }}>
+              {view === 'trash' ? copy('在笔记中查看', 'Show in notes') : copy('在回收站中查看', 'Show in Trash')}</button>
+          </> : <p>{copy('换个关键词试试。', 'Try another word.')}</p>
+            : <p>{view === 'trash' ? copy('移到回收站的笔记会留在这里，可以恢复。', 'Notes you move to Trash wait here and can be restored.') : copy('一句提醒，一张清单，或者还没想完的事。', 'A reminder, a list, or something still taking shape.')}</p>}
+          {!query.trim() && view !== 'trash' && <button className="jot-btn jot-primary" type="button" onClick={newNote} disabled={busy}>{copy('新建笔记', 'New note')}</button>}
         </div>}
       </div>}
       <div className="jot-agent-line">
@@ -920,8 +1019,16 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
             <option value="">{copy('未分类', 'Unfiled')}</option>
             {snapshot?.folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
           </select>}
-          {agentEdited && <span className="jot-agent-chip" title={copy('这一版由 AI 通过随记工具保存；你编辑后标记会消失。', 'This version was saved by AI through Jot tools; it clears when you edit.')}>
-            <JotActionIcon name="sparkle" size={12} />{copy('AI 修改', 'AI edited')}</span>}
+          {agentEdited && (agentUndoable
+            ? <button type="button" className="jot-agent-chip" onClick={() => setRevertConfirm(true)} disabled={busy}
+              title={copy('这一版由 AI 通过随记工具保存。点按可以撤销 AI 的修改；你编辑后标记会消失。', 'This version was saved by AI through Jot tools. Select to undo the AI edits; the mark clears when you edit.')}>
+              <JotActionIcon name="sparkle" size={12} />{copy('AI 修改', 'AI edited')}</button>
+            : <span className="jot-agent-chip" title={copy('这一版由 AI 通过随记工具保存；你编辑后标记会消失。', 'This version was saved by AI through Jot tools; it clears when you edit.')}>
+              <JotActionIcon name="sparkle" size={12} />{copy('AI 修改', 'AI edited')}</span>)}
+          {!agentEdited && !selectedDeleted && snapshot?.agentEnabled && <span className="jot-agent-indicator" role="img"
+            aria-label={copy('AI 协作已开启', 'AI collaboration is on')}
+            title={copy('AI 协作已开启：你提出要求时，AI 可以读取和修改笔记。可在列表底部关闭。', 'AI collaboration is on: when you ask, AI can read and edit notes. Turn it off below the note list.')}>
+            <JotActionIcon name="sparkle" size={14} /></span>}
           <span className="jot-save-slot" role="status" aria-live="polite">
             {saveActionable
               ? <button type="button" className={`jot-save-label is-action${savePhase === 'error' ? ' is-error' : ''}`} title={copy('立即保存（⌘/Ctrl+S）', 'Save now (⌘/Ctrl+S)')}
@@ -974,6 +1081,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
                 }
               }} />
             <RichEditor key={draft.noteId} value={draft.content} locale={locale} readOnly={selectedDeleted}
+              onRequestAttachment={selectedDeleted || uploadBusy ? undefined : () => fileInput.current?.click()}
               onReady={actions => { releaseEditorFocus(); editorActions.current = actions }}
               onChange={content => patchDraft({ content })} />
           </div>
@@ -998,6 +1106,11 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     }} onBlurCapture={releaseEditorFocus}
     onKeyDownCapture={event => {
       if ((event.target as HTMLElement).closest('[role="dialog"],[role="menu"]')) return
+      // "?" lists every key Jot handles, from anywhere outside text fields.
+      if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey && !editableTarget(event.target)) {
+        event.preventDefault(); event.stopPropagation(); setHelpOpen(true)
+        return
+      }
       // "/" searches the library from anywhere in Jot except text fields.
       if (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !editableTarget(event.target)) {
         event.preventDefault(); event.stopPropagation()
@@ -1099,13 +1212,6 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         <button type="button" className="jot-btn jot-primary" disabled={busy} onClick={moveSelected}>{copy('移动', 'Move')}</button>
       </div>
     </Modal>}
-    {bulkDeleteOpen && <Modal size="small" title={copy('移到回收站', 'Move to Trash')} closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setBulkDeleteOpen(false) }}>
-      <p className="jot-dialog-text">{copy(`把所选 ${selectedIds.size} 条笔记移到回收站？之后可以在回收站恢复。`, `Move ${selectedIds.size} notes to Trash? You can restore them from Trash.`)}</p>
-      <div className="jot-dialog-actions">
-        <button type="button" className="jot-btn" disabled={busy} onClick={() => setBulkDeleteOpen(false)}>{copy('取消', 'Cancel')}</button>
-        <button type="button" className="jot-btn jot-primary" disabled={busy} onClick={deleteSelected}>{copy('移到回收站', 'Move to Trash')}</button>
-      </div>
-    </Modal>}
     {purgeConfirm && <Modal size="small" title={purgeConfirm === 'trash' ? copy('清空回收站', 'Empty Trash') : copy('永久删除', 'Delete permanently')}
       closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setPurgeConfirm(null) }}>
       <p className="jot-dialog-text">{purgeConfirm === 'trash'
@@ -1116,6 +1222,22 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         <button type="button" className="jot-btn jot-danger-fill" disabled={busy} onClick={purgeConfirm === 'trash' ? emptyTrash : purgeSelected}>
           {purgeConfirm === 'trash' ? copy('清空回收站', 'Empty Trash') : copy('永久删除', 'Delete permanently')}</button>
       </div>
+    </Modal>}
+    {exportOpen && <Modal size="small" title={copy('导出笔记', 'Export notes')} closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setExportOpen(false) }}>
+      <ExportDialog locale={locale} scope={exportScope} count={exportable} busy={busy} error={exportError}
+        initialFormat={(['docx', 'pdf', 'md'] as const).find(format => format === storage.get('dsh-jot:export-format:v1')) ?? 'docx'}
+        onSubmit={format => void exportLibrary(format)} onClose={() => setExportOpen(false)} />
+    </Modal>}
+    {revertConfirm && draft && <Modal size="small" title={copy('撤销 AI 的修改', 'Undo AI edits')} closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setRevertConfirm(false) }}>
+      <p className="jot-dialog-text">{copy('这篇笔记会回到 AI 修改之前的样子；AI 连续做的几次修改会一起撤销。AI 写入的版本不会另外保留。',
+        'This note returns to how it was before AI edited it. Consecutive AI edits are undone together, and the AI version is not kept.')}</p>
+      <div className="jot-dialog-actions">
+        <button type="button" className="jot-btn" disabled={busy} onClick={() => setRevertConfirm(false)}>{copy('取消', 'Cancel')}</button>
+        <button type="button" className="jot-btn jot-primary" disabled={busy || !agentUndoable} onClick={revertAgent}>{copy('撤销修改', 'Undo edits')}</button>
+      </div>
+    </Modal>}
+    {helpOpen && <Modal title={copy('键盘快捷键', 'Keyboard shortcuts')} closeLabel={copy('关闭', 'Close')} onClose={() => setHelpOpen(false)}>
+      <ShortcutHelp locale={locale} />
     </Modal>}
     {attachmentPreview && <AttachmentPreview attachment={attachmentPreview} onClose={() => setAttachmentPreview(null)} locale={locale}
       getCapabilities={api.getAttachmentCapabilities} onOpenNative={api.openAttachment ? signal => api.openAttachment!(attachmentPreview.id, { signal }) : undefined} />}

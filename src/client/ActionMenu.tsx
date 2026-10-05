@@ -16,6 +16,16 @@ export interface ActionMenuItem {
 /** Non-interactive structure: a divider or a small group caption. */
 export type ActionMenuEntry = ActionMenuItem | { separator: true } | { heading: string }
 const isItem = (entry: ActionMenuEntry): entry is ActionMenuItem => 'onSelect' in entry
+/** Dividers never lead, trail or repeat, whichever optional groups a caller included. */
+export function tidyMenuEntries(entries: readonly ActionMenuEntry[]): ActionMenuEntry[] {
+  const result: ActionMenuEntry[] = []
+  for (const entry of entries) {
+    if ('separator' in entry && (!result.length || 'separator' in result.at(-1)!)) continue
+    result.push(entry)
+  }
+  while (result.length && 'separator' in result.at(-1)!) result.pop()
+  return result
+}
 export interface ActionMenuProps {
   triggerLabel: string
   items: readonly ActionMenuEntry[]
@@ -27,7 +37,8 @@ export interface ActionMenuProps {
   triggerClassName?: string
 }
 
-export function ActionMenu({ triggerLabel, items, position, onClose, triggerIcon = 'more', triggerClassName }: ActionMenuProps) {
+export function ActionMenu({ triggerLabel, items: entries, position, onClose, triggerIcon = 'more', triggerClassName }: ActionMenuProps) {
+  const items = tidyMenuEntries(entries)
   const id = useId()
   const modalOwner = useContext(ModalLayerContext)
   const trigger = useRef<HTMLButtonElement>(null)

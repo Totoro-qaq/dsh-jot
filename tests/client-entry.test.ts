@@ -5,7 +5,7 @@ import { renderToString } from 'react-dom/server'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShortcutCommand, ShortcutContext } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type { ActionSpec, CommandContribution } from '@deepseek-ai/dsh-client-ui-commands/client'
+import type { CommandContribution, PopupSelectSpec, SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { JotAppProps } from '../src/client/App.js'
 import { consumeJotCommand } from '../src/client/commands.js'
 import { apply, PANEL_ID, TAB_ID } from '../src/client/index.js'
@@ -288,32 +288,63 @@ test('closing a pending compact tab and unmounting the plugin invalidate previou
   assert.equal(fixture.keyboardCommands.size, 0)
 })
 
-const slashSession = (sessionId: string) => ({ sessionId } as Parameters<ActionSpec['run']>[0])
+const slashSession = (sessionId: string) => ({ sessionId } as Parameters<PopupSelectSpec['onSelect']>[1])
+/** Settle a "/jot" picker row as the official shell does; a refusal keeps the command in the composer. */
+async function chooseSlash(entry: CommandContribution, sessionId: string, id = 'open') {
+  assert.equal(entry.ui.kind, 'popupSelect')
+  try { await (entry.ui as PopupSelectSpec).onSelect({ id, label: id } as SelectOption, slashSession(sessionId)); return true }
+  catch { return false }
+}
 
-test('the native slash action opens only its captured foreground session through the public tab API', () => {
+test('the native slash picker opens only its captured foreground session through the public tab API', async () => {
   const fixture = entryFixture()
   fixture.mount()
   fixture.showConversation('conversation-a')
   const entry = fixture.slashCommands.get('jot')!
-  assert.equal(entry.ui.kind, 'action')
+  assert.equal(entry.ui.kind, 'popupSelect')
   assert.equal(entry.icon, JotIcon)
   assert.equal(entry.label!(), '打开随记')
   assert.equal(entry.available(slashSession('conversation-a')), true)
-  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-a'))
+  assert.equal(await chooseSlash(entry, 'conversation-a'), true)
   assert.deepEqual(fixture.openedSessionTabs, [{ sessionId: 'conversation-a', kind: 'dsh-jot' }])
   assert.deepEqual(fixture.selectedPanels, [])
   fixture.showConversation('conversation-b')
   assert.equal(entry.available(slashSession('conversation-a')), false)
-  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-a'))
-  assert.equal(fixture.openedSessionTabs.length, 1, 'a stale callback never redirects itself to the new conversation')
+  assert.equal(await chooseSlash(entry, 'conversation-a'), false)
+  assert.equal(fixture.openedSessionTabs.length, 1, 'a stale picker never redirects itself to the new conversation')
   fixture.locale.select('en')
   assert.equal(entry.label!(), 'Open Jot')
-  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-b'))
+  assert.equal(await chooseSlash(entry, 'conversation-b'), true)
   assert.deepEqual(fixture.openedSessionTabs.at(-1), { sessionId: 'conversation-b', kind: 'dsh-jot' })
   fixture.unmount()
 })
 
-test('a selected conversation awaiting sidebar mount cannot act through the previously mounted session', () => {
+for (const [row, expected] of [['new', { action: 'new' }], ['note:note-7', { action: 'open-note', noteId: 'note-7' }]] as const) {
+  test(`the slash picker delivers "${row}" only to the Jot tab it opened`, async () => {
+    const fixture = entryFixture()
+    fixture.mount()
+    fixture.showConversation('conversation-zh', 'jot-tab')
+    assert.equal(await chooseSlash(fixture.slashCommands.get('jot')!, 'conversation-zh', row), true)
+    assert.deepEqual(fixture.openedSessionTabs, [{ sessionId: 'conversation-zh', kind: 'dsh-jot' }])
+    const [other, opened] = renderCompactSlots(fixture, [
+      { sessionId: 'conversation-en', tabId: 'jot-tab' }, { sessionId: 'conversation-zh', tabId: 'jot-tab' },
+    ])
+    assert.equal(other!.commandRequest, undefined)
+    const request = opened!.commandRequest!
+    assert.equal(request.action, expected.action)
+    assert.equal(request.target, 'compact')
+    assert.equal(request.noteId, 'noteId' in expected ? expected.noteId : undefined)
+    let runs = 0
+    const consume = () => consumeJotCommand(request, { ready: true, busy: false, blocked: false, lastHandled: 0 }, {
+      claim: opened!.onCommandClaim, run: action => { assert.equal(action.action, expected.action); runs++ },
+    })
+    consume(); consume()
+    assert.equal(runs, 1)
+    fixture.unmount()
+  })
+}
+
+test('a selected conversation awaiting sidebar mount cannot act through the previously mounted session', async () => {
   const fixture = entryFixture()
   fixture.mount()
   fixture.showConversation('conversation-a')
@@ -321,15 +352,13 @@ test('a selected conversation awaiting sidebar mount cannot act through the prev
   fixture.selectBeforeSidebarMount('conversation-b')
   assert.equal(entry.available(slashSession('conversation-a')), false)
   assert.equal(entry.available(slashSession('conversation-b')), false)
-  if (entry.ui.kind === 'action') {
-    entry.ui.run(slashSession('conversation-a'))
-    entry.ui.run(slashSession('conversation-b'))
-  }
+  assert.equal(await chooseSlash(entry, 'conversation-a'), false)
+  assert.equal(await chooseSlash(entry, 'conversation-b'), false)
   assert.deepEqual(fixture.openedSessionTabs, [])
   fixture.unmount()
 })
 
-test('an old composer action cannot open a sidebar after the user switches to the full notebook', () => {
+test('an old composer picker cannot open a sidebar after the user switches to the full notebook', async () => {
   const fixture = entryFixture()
   fixture.mount()
   fixture.showConversation('conversation-a')
@@ -337,7 +366,7 @@ test('an old composer action cannot open a sidebar after the user switches to th
   assert.equal(entry.available(slashSession('conversation-a')), true)
   fixture.context.layout.selectPanel(PANEL_ID)
   assert.equal(entry.available(slashSession('conversation-a')), false)
-  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-a'))
+  assert.equal(await chooseSlash(entry, 'conversation-a'), false)
   assert.deepEqual(fixture.openedSessionTabs, [])
   fixture.unmount()
 })
@@ -356,7 +385,7 @@ test('missing slash service or a foreign jot contribution preserves all existing
   }
 })
 
-test('native remount replaces the slash entry once and a disposed old action cannot navigate', () => {
+test('native remount replaces the slash entry once and a disposed old picker cannot navigate', async () => {
   const fixture = entryFixture()
   fixture.mount()
   fixture.showConversation('conversation-a')
@@ -367,9 +396,9 @@ test('native remount replaces the slash entry once and a disposed old action can
   const fresh = fixture.slashCommands.get('jot')!
   assert.notEqual(old, fresh)
   assert.equal(fixture.slashCommands.size, 1)
-  if (old.ui.kind === 'action') old.ui.run(slashSession('conversation-a'))
+  assert.equal(await chooseSlash(old, 'conversation-a'), false)
   assert.deepEqual(fixture.openedSessionTabs, [])
-  if (fresh.ui.kind === 'action') fresh.ui.run(slashSession('conversation-a'))
+  assert.equal(await chooseSlash(fresh, 'conversation-a'), true)
   assert.equal(fixture.openedSessionTabs.length, 1)
   fixture.unmount()
 })

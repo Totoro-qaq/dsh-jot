@@ -24,7 +24,11 @@ export interface Note {
 }
 
 export interface Folder { id: string; name: string }
-export interface AgentEdit { revision: number; at: string }
+export interface AgentEdit {
+  revision: number; at: string
+  /** The version from before this run of AI edits can be restored. */
+  undo?: boolean
+}
 export interface JotState {
   version: 1; notes: Note[]; folders: Folder[]; agentEnabled: boolean
   /** Present from Hosts that record agent attribution; keyed by note id. */
@@ -40,7 +44,15 @@ export interface AttachmentInfo {
 }
 export interface AttachmentCapabilities { nativeOpen: boolean }
 export type ExportFormat = 'txt' | 'md' | 'pdf' | 'docx'
+export type LibraryExportFormat = 'docx' | 'pdf' | 'md'
 export interface NoteDownload { blob: Blob; filename: string }
+export interface LibraryDownload extends NoteDownload { notes: number; attachments: number }
+export interface LibraryExportOptions {
+  format: LibraryExportFormat
+  /** Omitted exports every note; null exports unfiled notes; an id exports one folder. */
+  folderId?: string | null
+  locale: JotLocale
+}
 
 export interface JotApi {
   getState(): Promise<JotState>
@@ -64,6 +76,10 @@ export interface JotApi {
   prepareAttachmentPreview?(id: string, options?: { signal?: AbortSignal }): Promise<{ path: string }>
   openAttachment?(id: string, options?: { signal?: AbortSignal }): Promise<void>
   exportNote(input: { title: string; content: RichDoc }, format: ExportFormat): Promise<NoteDownload>
+  /** A ZIP of many notes, one file each, sorted into folders. */
+  exportLibrary?(options: LibraryExportOptions): Promise<LibraryDownload>
+  /** Restore the version from before the latest run of AI edits. */
+  revertAgentEdit?(id: string, revision: number): Promise<Note>
 }
 
 export type JotLocale = 'zh' | 'en'

@@ -65,11 +65,13 @@ export interface JotCompactRecipient {
   signal: AbortSignal
 }
 export interface JotCommandRequest {
-  action: 'new' | 'capture'
+  action: 'new' | 'capture' | 'open-note'
   target: 'wide' | 'compact'
   revision: number
   /** Text selected when the command ran, captured before any navigation. */
   text?: string
+  /** The note chosen in the "/jot" picker, for `open-note`. */
+  noteId?: string
   recipient?: JotCompactRecipient
 }
 

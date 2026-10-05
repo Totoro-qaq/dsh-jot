@@ -18,6 +18,9 @@ export const LOCK_FILENAME = '.jot.lock'
 export const ACTIVITY_FILENAME = 'jot.activity.json'
 const MAX_ACTIVITY_BYTES = 2 * 1_048_576
 const MAX_STATE_BYTES = 32 * 1_048_576
+/** Pre-AI versions live beside jot.json, one small file per note, so the notes file format never changes. */
+export const AGENT_UNDO_DIRECTORY = 'jot.agent-undo'
+const MAX_UNDO_BYTES = 2 * 1_048_576
 const NOTE_KEYS = ['id', 'title', 'content', 'text', 'folderId', 'pinned', 'revision', 'createdAt', 'updatedAt', 'deletedAt']
 
 function isErrno(error: unknown, code: string): boolean {
@@ -46,7 +49,15 @@ function emptyState(): JotState { return { version: 1, notes: [], folders: [], a
 const contentTag = (source: string): string => createHash('sha256').update(source).digest('base64url').slice(0, 22)
 
 /** The latest saved revision of a note that came from an agent tool. */
-export interface AgentEdit { revision: number; at: string }
+export interface AgentEdit {
+  revision: number
+  at: string
+  /** True when the version before this run of agent edits was kept and can be restored. */
+  undo?: boolean
+}
+/** The note as it was before an uninterrupted run of agent edits. */
+export interface AgentUndoBefore { revision: number; title: string; content: RichDoc; folderId: string | null }
+interface AgentUndo { version: 1; noteId: string; revision: number; at: string; before: AgentUndoBefore }
 /** User-facing snapshot: the notes state plus agent attribution for unchanged agent revisions. */
 export interface JotSnapshot extends JotState { agentEdits: Record<string, AgentEdit> }
 export interface PurgeResult { purged: string[]; attachments: string[] }
@@ -194,7 +205,12 @@ export class JotStore {
     }
   }
 
-  private async access<T>(actor: Actor, mutate: boolean, operation: (state: JotState) => T | Promise<T>): Promise<T> {
+  private async access<T>(actor: Actor, mutate: boolean, operation: (state: JotState) => T | Promise<T>, hooks: {
+    /** The version an agent edit replaced, captured by the operation. */
+    undo?: () => AgentUndoBefore | undefined
+    /** Sidecar cleanup that must follow a successful save while the lock is still held. */
+    saved?: () => Promise<void>
+  } = {}): Promise<T> {
     validateActor(actor)
     const unlock = await this.lock()
     try {
@@ -203,7 +219,8 @@ export class JotStore {
       const result = await operation(state)
       if (mutate) {
         await this.persist(state, previous)
-        if (actor === 'agent') await this.recordAgentEdit(result, state)
+        if (actor === 'agent') await this.recordAgentEdit(result, state, hooks.undo?.())
+        await hooks.saved?.().catch(() => {})
       }
       return structuredClone(result)
     } finally { await unlock() }
@@ -223,7 +240,7 @@ export class JotStore {
         for (const [id, value] of Object.entries(parsed.notes as Record<string, unknown>)) {
           const entry = value as Partial<AgentEdit> | null
           if (/^[a-zA-Z0-9_-]{1,100}$/u.test(id) && Number.isSafeInteger(entry?.revision) && typeof entry?.at === 'string') {
-            edits[id] = { revision: entry.revision!, at: entry.at }
+            edits[id] = { revision: entry.revision!, at: entry.at, ...entry.undo === true ? { undo: true } : {} }
           }
         }
       }
@@ -232,21 +249,72 @@ export class JotStore {
   }
 
   /** Best effort and never fails the saved agent operation. Entries for later human revisions are pruned. */
-  private async recordAgentEdit(result: unknown, state: JotState): Promise<void> {
+  private async recordAgentEdit(result: unknown, state: JotState, before?: AgentUndoBefore): Promise<void> {
     const changed = result as Partial<Note> | null
     if (!changed || typeof changed.id !== 'string' || typeof changed.revision !== 'number') return
     try {
       const { edits } = await this.readActivity()
       const revisions = new Map(state.notes.map(note => [note.id, note.revision]))
       const notes: Record<string, AgentEdit> = {}
-      for (const [id, entry] of Object.entries(edits)) if (revisions.get(id) === entry.revision) notes[id] = entry
-      notes[changed.id] = { revision: changed.revision, at: timestamp() }
+      const stale: string[] = []
+      for (const [id, entry] of Object.entries(edits)) {
+        if (revisions.get(id) === entry.revision) notes[id] = entry
+        else if (entry.undo && id !== changed.id) stale.push(id)
+      }
+      const undo = before ? await this.recordAgentUndo(changed.id, changed.revision, before) : false
+      notes[changed.id] = { revision: changed.revision, at: timestamp(), ...undo ? { undo: true } : {} }
       const temporary = join(this.directory, `.jot-activity-${process.pid}-${randomUUID()}.tmp`)
       try {
         await this.writeSynced(temporary, JSON.stringify({ version: 1, notes }) + '\n')
         await rename(temporary, this.activityPath)
       } finally { await rm(temporary, { force: true }) }
+      // A human revision ended those runs; their kept versions are no longer offered.
+      await Promise.all(stale.map(id => rm(this.undoPath(id), { force: true }).catch(() => {})))
     } catch { /* The note itself is already saved. */ }
+  }
+
+  private undoPath(id: string): string { return join(this.directory, AGENT_UNDO_DIRECTORY, `${validateId(id)}.json`) }
+
+  private async readUndo(id: string): Promise<AgentUndo | null> {
+    let source: string
+    try {
+      const info = await stat(this.undoPath(id))
+      if (!info.isFile() || info.size > MAX_UNDO_BYTES) return null
+      source = await readFile(this.undoPath(id), 'utf8')
+    } catch { return null }
+    try {
+      const data = record(JSON.parse(source), 'agent undo')
+      const before = record(data.before, 'agent undo version')
+      if (data.version !== 1 || data.noteId !== id || !Number.isSafeInteger(data.revision) || typeof data.at !== 'string'
+        || !Number.isSafeInteger(before.revision)) return null
+      return { version: 1, noteId: id, revision: data.revision as number, at: data.at, before: {
+        revision: before.revision as number, title: boundedString(before.title, MAX_TITLE_LENGTH, 'title'),
+        content: validateRichDoc(before.content), folderId: before.folderId === null ? null : validateId(before.folderId),
+      } }
+    } catch { return null }
+  }
+
+  /**
+   * Keep the version from before an uninterrupted run of agent edits: a later
+   * agent edit of the same note extends the run instead of replacing its start.
+   */
+  private async recordAgentUndo(id: string, revision: number, before: AgentUndoBefore): Promise<boolean> {
+    try {
+      const existing = await this.readUndo(id)
+      const start = existing && existing.revision === before.revision ? existing.before : before
+      const serialized = JSON.stringify({ version: 1, noteId: id, revision, at: timestamp(), before: start } satisfies AgentUndo) + '\n'
+      if (Buffer.byteLength(serialized, 'utf8') > MAX_UNDO_BYTES) {
+        await rm(this.undoPath(id), { force: true })
+        return false
+      }
+      await mkdir(join(this.directory, AGENT_UNDO_DIRECTORY), { recursive: true, mode: 0o700 })
+      const temporary = join(this.directory, AGENT_UNDO_DIRECTORY, `.undo-${process.pid}-${randomUUID()}.tmp`)
+      try {
+        await this.writeSynced(temporary, serialized)
+        await rename(temporary, this.undoPath(id))
+      } finally { await rm(temporary, { force: true }) }
+      return true
+    } catch { return false }
   }
 
   private note(state: JotState, id: string, actor: Actor, activeOnly = false): Note {
@@ -324,9 +392,11 @@ export class JotStore {
     })
   }
   async updateNote(id: string, revision: number, patch: UpdateNotePatch, actor: Actor = 'user', verify?: ContentVerifier): Promise<Note> {
+    let before: AgentUndoBefore | undefined
     return this.access(actor, true, async state => {
       const note = this.note(state, id, actor, true)
       this.checkRevision(note, revision)
+      if (actor === 'agent') before = { revision: note.revision, title: note.title, content: structuredClone(note.content), folderId: note.folderId }
       const data = record(patch, 'note patch')
       onlyKeys(data, ['title', 'content', 'appendText', 'appendContent', 'folderId', 'pinned'], 'note patch')
       if (Object.keys(data).length === 0) invalid('Note patch must change at least one field')
@@ -350,7 +420,34 @@ export class JotStore {
       note.revision++
       note.updatedAt = timestamp(note.updatedAt)
       return note
-    })
+    }, { undo: () => before })
+  }
+  /**
+   * Restore the version from before the latest run of agent edits, as a new
+   * human revision. Only the user can do this, and only while the agent's
+   * version is still the current one.
+   */
+  async revertAgentEdit(id: string, revision: number, actor: Actor = 'user', verify?: ContentVerifier): Promise<Note> {
+    validateActor(actor)
+    if (actor !== 'user') throw new StoreError('HUMAN_ONLY', 'Only the user can undo an agent edit')
+    return this.access(actor, true, async state => {
+      const note = this.note(state, id, 'user', true)
+      this.checkRevision(note, revision)
+      const undo = await this.readUndo(id)
+      const { edits } = await this.readActivity()
+      if (!undo || undo.revision !== note.revision || edits[id]?.revision !== note.revision) {
+        throw new StoreError('NOT_FOUND', 'There is no agent edit to undo for this version')
+      }
+      note.title = undo.before.title
+      note.content = undo.before.content
+      // A folder deleted since the agent moved the note leaves it unfiled.
+      note.folderId = undo.before.folderId !== null && state.folders.some(folder => folder.id === undo.before.folderId) ? undo.before.folderId : null
+      await verify?.(note.content)
+      note.text = docToText(note.content)
+      note.revision++
+      note.updatedAt = timestamp(note.updatedAt)
+      return note
+    }, { saved: () => rm(this.undoPath(id), { force: true }) })
   }
   async deleteNote(id: string, revision: number, actor: Actor = 'user'): Promise<NoteSummary> {
     return this.access(actor, true, state => {
@@ -401,6 +498,7 @@ export class JotStore {
       const kept = new Set(state.notes.flatMap(note => [...documentAttachmentIds(note.content)]))
       const orphaned = [...new Set(removed.flatMap(note => [...documentAttachmentIds(note.content)]))].filter(id => !kept.has(id))
       await this.persist(state, previous)
+      await Promise.all([...ids].map(id => rm(this.undoPath(id), { force: true }).catch(() => {})))
       let attachments: string[] = []
       if (orphaned.length && release) {
         try { await release(orphaned); attachments = orphaned }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, nextActiveNoteId, noteDateGroup, noteDateValue, noteExcerpt, titleMatchesFirst } from '../src/client/note-list.js'
+import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, nextActiveNoteId, noteDateGroup, noteDateValue, noteExcerpt, noteMatchesQuery, searchElsewhere, titleMatchesFirst } from '../src/client/note-list.js'
 import type { Note } from '../src/client/types.js'
 
 const note = (id: string, patch: Partial<Note> = {}): Note => ({
@@ -163,4 +163,24 @@ test('selection activation toggles a batch note exactly once without opening or 
   activateNoteListItem(target, options)
   assert.deepEqual(opened, [target])
   assert.equal(toggled[0], opened[0])
+})
+
+test('an empty search names the folder or Trash that does hold matches', () => {
+  const notes = [
+    note('a', { title: '周会纪要', folderId: 'work' }),
+    note('b', { title: '采购', text: '周会前买咖啡', folderId: 'life' }),
+    note('c', { title: '旧周会', deletedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' }),
+    note('d', { title: '无关' }),
+  ]
+  assert.equal(noteMatchesQuery(notes[1]!, ' 周会 '), true, 'body text matches and the query is trimmed')
+  assert.equal(noteMatchesQuery(notes[3]!, '周会'), false)
+  assert.equal(noteMatchesQuery(notes[3]!, '   '), true, 'a blank query hides nothing')
+  // Searching inside an unrelated folder: other folders and Trash both hold matches.
+  assert.deepEqual(searchElsewhere(notes, '周会', { trash: false, folderFiltered: true }), { otherFolders: 2, otherView: 1 })
+  // Without a folder filter only Trash can be offered.
+  assert.deepEqual(searchElsewhere(notes, '周会', { trash: false, folderFiltered: false }), { otherFolders: 0, otherView: 1 })
+  // From Trash, the notes views are the other scope.
+  assert.deepEqual(searchElsewhere(notes, '咖啡', { trash: true, folderFiltered: false }), { otherFolders: 0, otherView: 1 })
+  assert.deepEqual(searchElsewhere(notes, '不存在', { trash: false, folderFiltered: true }), { otherFolders: 0, otherView: 0 })
+  assert.deepEqual(searchElsewhere(notes, '  ', { trash: false, folderFiltered: true }), { otherFolders: 0, otherView: 0 })
 })

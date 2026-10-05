@@ -550,3 +550,94 @@ export async function exportJotNote(input: Input, format: ExportFormat, options:
   if (buffer.length > MAX_EXPORT_BYTES) invalid('Export exceeds 50 MiB')
   return { buffer, filename: `${filename(title)}.${extension}`, contentType }
 }
+
+export const LIBRARY_EXPORT_FORMATS = ['docx', 'pdf', 'md'] as const
+export type LibraryExportFormat = typeof LIBRARY_EXPORT_FORMATS[number]
+/** Larger libraries export folder by folder; this bounds one request's time and memory. */
+export const MAX_LIBRARY_EXPORT_NOTES = 2_000
+/** Each PDF embeds its own font subset (about 40 ms and 90 KiB per note), so PDF archives are smaller. */
+export const MAX_LIBRARY_PDF_NOTES = 500
+export const MAX_LIBRARY_EXPORT_BYTES = 200 * 1_024 * 1_024
+export interface LibraryExportNote { id: string; title: string; text: string; content: RichDoc; folderId: string | null }
+export interface LibraryExport extends NoteExport { notes: number; attachments: number }
+
+/** The list's name for a note: its title, or its first line, as untitled notes appear in Jot. */
+function displayTitle(note: LibraryExportNote, untitled: string): string {
+  const firstLine = note.text.replace(/^\[(?:x| )\] /gmu, '').split('\n').find(line => line.trim())?.trim() ?? ''
+  return note.title.trim() || firstLine.slice(0, 80) || untitled
+}
+
+/** Case-insensitive unique file names inside one folder: "名称", "名称 (2)", … */
+function uniquePath(used: Set<string>, directory: string, base: string, extension: string): string {
+  for (let count = 1; ; count++) {
+    const name = `${base}${count === 1 ? '' : ` (${count})`}${extension}`
+    const full = directory ? `${directory}/${name}` : name
+    if (!used.has(full.toLocaleLowerCase())) { used.add(full.toLocaleLowerCase()); return full }
+  }
+}
+
+/**
+ * Export many notes as one ZIP: a file per note in the chosen format, inside a
+ * directory per folder, plus every referenced attachment once in a shared
+ * folder. Word and PDF embed PNG/JPEG images; the original files keep GIF,
+ * WebP and other attachments. Markdown links to that folder.
+ */
+export async function exportJotLibrary(input: { notes: readonly LibraryExportNote[]; folders: readonly { id: string; name: string }[] },
+  format: LibraryExportFormat, options: ExportOptions & { locale?: 'zh' | 'en'; now?: Date } = {}): Promise<LibraryExport> {
+  if (!LIBRARY_EXPORT_FORMATS.includes(format)) invalid('Unsupported export format')
+  const en = options.locale === 'en'
+  if (!input.notes.length) invalid('There are no notes to export')
+  if (input.notes.length > MAX_LIBRARY_EXPORT_NOTES) invalid(`Export at most ${MAX_LIBRARY_EXPORT_NOTES} notes at once; export one folder at a time`)
+  if (format === 'pdf' && input.notes.length > MAX_LIBRARY_PDF_NOTES) {
+    invalid(`Export at most ${MAX_LIBRARY_PDF_NOTES} notes as PDF at once; export one folder at a time or choose Word`)
+  }
+  const notes = input.notes.map(note => ({ ...note, content: validateRichDoc(note.content) }))
+  const used = new Set<string>()
+  const folders = new Map<string, string>()
+  for (const folder of input.folders) folders.set(folder.id, uniquePath(used, '', filename(folder.name), ''))
+  const attachmentDirectory = uniquePath(used, '', en ? 'attachments' : '附件', '')
+
+  // Every attachment is read once, however many notes use it.
+  const ids = new Set<string>()
+  const visit = (node: RichNode) => {
+    if (node.type === 'image' || node.type === 'attachment') ids.add(validateAttachmentId(node.attrs?.attachmentId))
+    for (const child of node.content ?? []) visit(child)
+  }
+  for (const note of notes) note.content.content.forEach(visit)
+  const assets: Assets = new Map()
+  let total = 0
+  if (options.attachmentLoader) for (const id of ids) {
+    const value = await options.attachmentLoader(id)
+    if (!value || !Buffer.isBuffer(value.data) || value.size !== value.data.length || typeof value.name !== 'string'
+      || typeof value.mimeType !== 'string') invalid('Invalid export attachment')
+    total += value.size
+    if (total > MAX_LIBRARY_EXPORT_BYTES) invalid('Attachments exceed 200 MiB; export one folder at a time')
+    const name = filename(value.name)
+    const dot = name.lastIndexOf('.')
+    const assetPath = uniquePath(used, attachmentDirectory, dot > 0 ? name.slice(0, dot) : name, dot > 0 ? name.slice(dot) : '')
+    assets.set(id, { ...value, name, assetPath, image: imageInfo(value.data) })
+  }
+
+  // Already-compressed files are stored, not deflated again.
+  const entries: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {}
+  for (const file of assets.values()) entries[file.assetPath] = [file.data, { level: 0 }]
+  const untitled = en ? 'Untitled' : '无标题'
+  for (const note of notes) {
+    const directory = note.folderId ? folders.get(note.folderId) ?? '' : ''
+    const title = displayTitle(note, untitled)
+    const path = uniquePath(used, directory, filename(title), `.${format}`)
+    const document = { title, content: note.content }
+    if (format === 'md') {
+      // Links are relative to the note's own folder.
+      const local: Assets = directory ? new Map([...assets].map(([id, file]) => [id, { ...file, assetPath: `../${file.assetPath}` }])) : assets
+      entries[path] = strToU8(`# ${mdEscape(title)}\n\n${note.content.content.map(node => markdownBlock(node, local)).join('\n\n')}\n`)
+    } else {
+      entries[path] = [format === 'docx' ? await wordDocument(document, assets) : await pdfDocument(document, assets, options.fontDirectory), { level: 0 }]
+    }
+  }
+  const buffer = Buffer.from(zipSync(entries, { level: 6 }))
+  if (buffer.length > MAX_LIBRARY_EXPORT_BYTES) invalid('The export exceeds 200 MiB; export one folder at a time')
+  const now = options.now ?? new Date()
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return { buffer, filename: `${en ? 'Jot' : '随记'}-${day}.zip`, contentType: 'application/zip', notes: notes.length, attachments: assets.size }
+}

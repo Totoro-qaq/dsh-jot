@@ -30,11 +30,20 @@ const BY_CODE: Record<string, Copy> = {
   INVALID_EXPORT_FORMAT: ['请选择 TXT、Markdown、PDF 或 Word。', 'Choose TXT, Markdown, PDF or Word.'],
 }
 
+/** Messages more specific than their code's generic sentence. */
+const BEFORE_CODE: Array<[RegExp, Copy]> = [
+  [/no agent edit to undo/iu, ['这一版已经不是 AI 修改后的版本，无法撤销。', 'This is no longer the AI-edited version, so it cannot be undone.']],
+]
+
 /** Some INVALID_INPUT messages carry a limit the user can act on. */
 const BY_MESSAGE: Array<[RegExp, Copy]> = [
   [/byte limit|too long|too complex|too many entries|size limit/iu, ['笔记内容超过容量上限，请拆分成几条笔记。', 'This note is over the size limit. Split it into several notes.']],
   [/Folder name already exists/iu, ['已经有同名文件夹了。', 'A folder with this name already exists.']],
+  [/exceed(?:s)? 200 MiB/iu, ['附件或导出文件超过 200 MiB，请按文件夹分批导出。', 'Attachments or the export exceed 200 MiB. Export one folder at a time.']],
   [/Export exceeds/iu, ['导出文件超过 50 MiB 上限。', 'The export is larger than 50 MiB.']],
+  [/no notes to export/iu, ['这里没有可以导出的笔记。', 'There are no notes to export here.']],
+  [/notes as PDF at once/iu, ['PDF 一次最多导出 500 篇笔记，可以按文件夹分批导出，或改用 Word。', 'PDF exports at most 500 notes at once. Export one folder at a time, or choose Word.']],
+  [/notes at once/iu, ['一次最多导出 2000 篇笔记，请按文件夹分批导出。', 'Export at most 2,000 notes at once. Export one folder at a time.']],
   [/Unsafe link/iu, ['包含不安全的链接，已拒绝保存。', 'The note contains an unsafe link and was not saved.']],
 ]
 
@@ -43,6 +52,7 @@ export function describeError(cause: unknown, locale: JotLocale): string {
   const pick = ([zh, en]: Copy) => locale === 'en' ? en : zh
   const code = typeof cause === 'object' && cause !== null && 'code' in cause && typeof cause.code === 'string' ? cause.code : ''
   const message = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : ''
+  for (const [pattern, copy] of BEFORE_CODE) if (pattern.test(message)) return pick(copy)
   if (BY_CODE[code]) return pick(BY_CODE[code])
   for (const [pattern, copy] of BY_MESSAGE) if (pattern.test(message)) return pick(copy)
   if (cause instanceof TypeError && /fetch|network|load failed/iu.test(message)) {

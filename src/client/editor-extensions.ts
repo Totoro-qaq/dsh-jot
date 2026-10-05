@@ -8,11 +8,37 @@ import Highlight from '@tiptap/extension-highlight'
 import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizePaletteColor } from '../model.js'
 import { JotTable, JotTableView, PersistableTableWidths } from './table-view.js'
 import { TABLE_CELL_MIN_WIDTH } from './table-actions.js'
+import { JotHeadingKeys, JotListKeys } from './list-commands.js'
+import type { JotLocale } from './types.js'
 
 export const managedAttachmentUrl = (id: string) => `/jot/api/attachments/${encodeURIComponent(id)}/content`
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{32}$/u.test(value)
 
-export interface JotExtensionOptions { resolveAttachmentUrl?: (id: string) => string }
+export interface JotExtensionOptions {
+  resolveAttachmentUrl?: (id: string) => string
+  /** Read on every render of a checkbox label, so a language change applies without a remount. */
+  locale?: () => JotLocale
+}
+
+/** Screen readers announce the checked state themselves; the label names the to-do. */
+export function taskCheckboxLabel(text: string, locale: JotLocale): string {
+  const name = text.trim()
+  if (locale === 'en') return name ? `To-do: ${name}` : 'Empty to-do'
+  return name ? `待办：${name}` : '空白待办'
+}
+
+const JotTaskItem = TaskItem.extend({
+  addNodeView() {
+    const parent = this.parent?.()
+    if (!parent) return null
+    return props => {
+      const view = parent(props)
+      // Tiptap repeats the checkbox's aria-label as visually hidden text; one announcement is enough.
+      ;(view.dom as Partial<Element>).querySelector?.(':scope > label > span')?.setAttribute('aria-hidden', 'true')
+      return view
+    }
+  },
+})
 
 /** Clipboard formatting can only introduce colors that persistence also accepts. */
 const PaletteColor = Color.extend({
@@ -93,8 +119,9 @@ function managedNode(name: 'image' | 'attachment', resolve: (id: string) => stri
 /** Shared by the actual editor and headless schema/command regression tests. */
 export function createJotExtensions(options: JotExtensionOptions = {}): Extensions {
   const resolve = options.resolveAttachmentUrl ?? managedAttachmentUrl
-  return [StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }),
-    TaskList, TaskItem.configure({ nested: true }),
+  const locale = options.locale ?? (() => 'zh' as const)
+  return [StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }), JotHeadingKeys, JotListKeys,
+    TaskList, JotTaskItem.configure({ nested: true, a11y: { checkboxLabel: node => taskCheckboxLabel(node.textContent, locale()) } }),
     JotTable.configure({ resizable: true, renderWrapper: true, cellMinWidth: TABLE_CELL_MIN_WIDTH,
       handleWidth: 6, View: JotTableView }), TableRow, TableHeader, TableCell, PersistableTableWidths,
     TextStyle, PaletteColor, PaletteHighlight.configure({ multicolor: true }),

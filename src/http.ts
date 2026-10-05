@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
 import type { JotStore } from './store.js'
-import { boundedString, documentAttachmentIds, MAX_DOC_BYTES, MAX_TITLE_LENGTH, onlyKeys, validateRichDoc, type RichDoc } from './model.js'
+import { boundedString, documentAttachmentIds, MAX_DOC_BYTES, MAX_TITLE_LENGTH, onlyKeys, validateId, validateRichDoc, type RichDoc } from './model.js'
 import { AttachmentStore, validateAttachmentId } from './attachments.js'
 import type { AttachmentActions } from './attachment-actions.js'
-import { EXPORT_FORMATS, exportJotNote, type ExportFormat } from './exports.js'
+import { EXPORT_FORMATS, exportJotLibrary, exportJotNote, LIBRARY_EXPORT_FORMATS, type ExportFormat, type LibraryExportFormat } from './exports.js'
 
 export const JOT_API_PATH = '/jot/api'
 // The request must carry a maximum-size rich document plus bounded note metadata.
@@ -156,6 +156,20 @@ function reply(response: ServerResponse, status: number, payload: unknown, heade
   response.end(JSON.stringify(payload))
 }
 
+/** A generated download; it is private to the authenticated user and never cached. */
+function sendFile(response: ServerResponse, file: { buffer: Buffer; filename: string; contentType: string }, headers: Record<string, string> = {}) {
+  response.writeHead(200, {
+    'content-type': file.contentType,
+    'content-disposition': fileDisposition(file.filename),
+    'content-length': file.buffer.length,
+    'cache-control': 'private, no-store',
+    'x-content-type-options': 'nosniff',
+    'cross-origin-resource-policy': 'same-origin',
+    ...headers,
+  })
+  response.end(file.buffer)
+}
+
 /** A completed request body is normal; a disconnected response cancels a pending native gesture. */
 function requestLifetime(request: IncomingMessage, response: ServerResponse) {
   const controller = new AbortController()
@@ -180,6 +194,10 @@ function requestLifetime(request: IncomingMessage, response: ServerResponse) {
 export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) {
   const attachments = options.attachments ?? new AttachmentStore({ directory: store.directory })
   const verifyAttachments = (content: RichDoc) => attachments.assertReferences([...documentAttachmentIds(content)])
+  const attachmentLoader = async (id: string) => {
+    const result = await attachments.content(id)
+    return { name: result.attachment.name, mimeType: result.attachment.mimeType, size: result.attachment.size, data: result.bytes }
+  }
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     try {
       assertJotRequestTrust(request)
@@ -225,21 +243,23 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
         if (typeof body.format !== 'string' || !EXPORT_FORMATS.includes(body.format as ExportFormat)) {
           throw new HttpError('INVALID_EXPORT_FORMAT', 'Choose TXT, Markdown, PDF or DOCX.', 400)
         }
-        const exported = await exportJotNote({ title, content }, body.format as ExportFormat, {
-          attachmentLoader: async id => {
-            const result = await attachments.content(id)
-            return { name: result.attachment.name, mimeType: result.attachment.mimeType, size: result.attachment.size, data: result.bytes }
-          },
+        const exported = await exportJotNote({ title, content }, body.format as ExportFormat, { attachmentLoader })
+        sendFile(response, exported)
+        return
+      } else if (method === 'POST' && path === '/export-library') {
+        const body = await readJson(request)
+        onlyKeys(body, ['format', 'folderId', 'locale'], 'library export')
+        if (typeof body.format !== 'string' || !LIBRARY_EXPORT_FORMATS.includes(body.format as LibraryExportFormat)) {
+          throw new HttpError('INVALID_EXPORT_FORMAT', 'Choose Word, PDF or Markdown.', 400)
+        }
+        // Absent exports every note; null exports unfiled notes; an id exports one folder. Trash is never exported.
+        const folderId = body.folderId === undefined || body.folderId === null ? body.folderId : validateId(body.folderId)
+        const state = await store.readState('user')
+        const notes = state.notes.filter(note => note.deletedAt === null && (folderId === undefined || note.folderId === folderId))
+        const exported = await exportJotLibrary({ notes, folders: state.folders }, body.format as LibraryExportFormat, {
+          attachmentLoader, locale: body.locale === 'en' ? 'en' : 'zh',
         })
-        response.writeHead(200, {
-          'content-type': exported.contentType,
-          'content-disposition': fileDisposition(exported.filename),
-          'content-length': exported.buffer.length,
-          'cache-control': 'private, no-store',
-          'x-content-type-options': 'nosniff',
-          'cross-origin-resource-policy': 'same-origin',
-        })
-        response.end(exported.buffer)
+        sendFile(response, exported, { 'x-jot-export-notes': String(exported.notes), 'x-jot-export-attachments': String(exported.attachments) })
         return
       } else if (method === 'POST' && path === '/attachments') {
         const encodedName = header(request, 'x-jot-filename')
@@ -303,6 +323,15 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
         const body = await readJson(request)
         data = await store.createNote(body as Parameters<JotStore['createNote']>[0], 'user', verifyAttachments)
         status = 201
+      } else if (/^\/notes\/[^/]+\/revert-agent-edit$/u.test(path)) {
+        if (method !== 'POST') {
+          response.setHeader('allow', 'POST')
+          throw new HttpError('METHOD_NOT_ALLOWED', 'Undoing an AI edit requires POST.', 405)
+        }
+        const id = pathId(/^\/notes\/([^/]+)\/revert-agent-edit$/u.exec(path)![1]!)
+        const body = await readJson(request)
+        onlyKeys(body, ['revision'], 'undo AI edit')
+        data = await store.revertAgentEdit(id, requireRevision(body), 'user', verifyAttachments)
       } else if (/^\/notes\/[^/]+\/purge$/u.test(path)) {
         if (method !== 'POST') {
           response.setHeader('allow', 'POST')

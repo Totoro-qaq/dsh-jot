@@ -1,10 +1,23 @@
-import type { AttachmentCapabilities, AttachmentInfo, Folder, JotApi, JotState, Note, NoteInput, NotePatch, NoteQuery, PurgeResult } from './types.js'
+import type { AttachmentCapabilities, AttachmentInfo, Folder, JotApi, JotState, LibraryDownload, Note, NoteDownload, NoteInput, NotePatch, NoteQuery, PurgeResult } from './types.js'
 
 export class JotApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
     super(message)
     this.name = 'JotApiError'
   }
+}
+
+/** Read a generated file response, keeping the Host's file name when it is safe. */
+async function download(response: Response, fallback: string): Promise<NoteDownload> {
+  if (!response.ok) {
+    const payload = await response.json() as { error?: { code?: string; message?: string } }
+    throw new JotApiError(response.status, payload.error?.code ?? 'EXPORT_FAILED', payload.error?.message ?? 'Export failed.')
+  }
+  const disposition = response.headers.get('content-disposition') ?? ''
+  let filename = fallback
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+  if (encoded) try { filename = decodeURIComponent(encoded).replace(/[\\/\u0000-\u001f]/g, '_') } catch { /* retain safe fallback */ }
+  return { blob: await response.blob(), filename }
 }
 
 export function createJotApi(base = '/jot/api'): JotApi {
@@ -100,16 +113,16 @@ export function createJotApi(base = '/jot/api'): JotApi {
       const response = await fetch(`${base}/export`, {
         method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...input, format }),
       })
-      if (!response.ok) {
-        const payload = await response.json()
-        throw new JotApiError(response.status, payload.error?.code ?? 'EXPORT_FAILED', payload.error?.message ?? 'Export failed.')
-      }
-      const disposition = response.headers.get('content-disposition') ?? ''
-      let filename = `note.${format}`
-      const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
-      if (encoded) try { filename = decodeURIComponent(encoded).replace(/[\\/\u0000-\u001f]/g, '_') } catch { /* retain safe fallback */ }
-      return { blob: await response.blob(), filename }
+      return download(response, `note.${format}`)
     },
+    async exportLibrary(options): Promise<LibraryDownload> {
+      const response = await fetch(`${base}/export-library`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(options),
+      })
+      const file = await download(response, 'Jot.zip')
+      return { ...file, notes: Number(response.headers.get('x-jot-export-notes') ?? 0), attachments: Number(response.headers.get('x-jot-export-attachments') ?? 0) }
+    },
+    revertAgentEdit: (id, revision) => request<Note>(`${notePath(id)}/revert-agent-edit`, 'POST', { revision }),
   }
 }
 

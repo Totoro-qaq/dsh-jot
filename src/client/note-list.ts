@@ -33,6 +33,32 @@ export function noteDateGroup(note: Pick<Note, 'pinned' | 'updatedAt'> & Partial
   return age > 1 && age < 7 ? 'week' : 'earlier'
 }
 
+/** The library search predicate shared by the list and its empty state. */
+export function noteMatchesQuery(note: Pick<Note, 'title' | 'text'>, query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase()
+  return !needle || note.title.toLocaleLowerCase().includes(needle) || note.text.toLocaleLowerCase().includes(needle)
+}
+
+/** Where else a search with no visible results would match, so the empty state can offer that scope. */
+export interface SearchElsewhere {
+  /** Matches in the same view (notes or Trash) once the folder filter is removed; 0 when no folder filter applies. */
+  otherFolders: number
+  /** Matches in the opposite view across all folders: Trash from the notes views, notes from Trash. */
+  otherView: number
+}
+
+export function searchElsewhere(notes: readonly Note[], query: string, options: { trash: boolean; folderFiltered: boolean }): SearchElsewhere {
+  if (!query.trim()) return { otherFolders: 0, otherView: 0 }
+  let otherFolders = 0
+  let otherView = 0
+  for (const note of notes) {
+    if (!noteMatchesQuery(note, query)) continue
+    if ((note.deletedAt !== null) === options.trash) { if (options.folderFiltered) otherFolders++ }
+    else otherView++
+  }
+  return { otherFolders, otherView }
+}
+
 /** Keep the caller's order inside each rank. Search results must never be regrouped by date. */
 export function titleMatchesFirst(notes: readonly Note[], query = ''): Note[] {
   const needle = query.trim().toLocaleLowerCase()

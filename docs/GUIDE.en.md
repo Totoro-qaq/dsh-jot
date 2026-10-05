@@ -10,14 +10,15 @@ Jot is a human-owned notes and lightweight-document workbench for DSH. Write par
 
 - **Jot** in the left navigation opens the full workbench without selecting a conversation. The workbench reopens the note you were last reading.
 - During a conversation, choose **Jot** in the official right sidebar's new-tab guide. The compact tab switches between the list and a note and adds nothing to the chat composer.
-- The development build adds `/jot`: enter the bare command in the chat composer and press Enter, or choose **Open Jot** from the slash menu. This client action consumes the command token and preserves other draft text and attachments.
+- The development build adds `/jot`: type it in the chat composer and press Enter, or choose **Open Jot** from the slash menu, to open a picker. **Open Jot** is preselected, so pressing Enter again opens the right-sidebar tab; you can also choose **New note**, or type to find a pinned or recent note and open it directly. Choosing consumes the `/jot` token and preserves other draft text and attachments; Escape closes the picker and leaves `/jot` in the composer.
 - **Open full notes** in the compact tab carries the current note and any unsaved draft into the workbench.
 
 ### Note list
 
-- **Recent** shows every pinned note and the five most recently edited ones; **All** groups notes by date in one continuous list; **Trash** keeps deleted notes. The number beside the views is the length of the current list.
-- Search matches titles and body text, ranks title matches first and shows the text around body matches. Inside Jot, outside a text field, press `/` to search.
-- **Sort and options** sorts by last modified, date created or title (Recent always uses last modified) and starts multi-select for moving notes or moving them to Trash.
+- **Recent** shows every pinned note and the five most recently edited ones; **All** groups notes by date in one continuous list; **Trash** keeps deleted notes. The count beside the views, such as “6 notes”, is the length of the current list.
+- Search matches titles and body text, ranks title matches first and shows the text around body matches. Searching from **Recent** covers every note. Inside Jot, outside a text field, press `/` to search.
+- When nothing matches but other folders or Trash do, Jot says how many and offers **Search all folders** or **Show in Trash**, keeping your search words.
+- **Sort and options** sorts by last modified, date created or title (Recent always uses last modified) and starts multi-select for moving notes or moving them to Trash. It also holds **Export all notes…** and **Keyboard shortcuts**.
 - Each row shows the time, checklist progress such as `2/5`, its folder, and an **AI edited** label when the latest saved version came from AI. Untitled notes borrow their first line as the displayed title.
 - Folders are optional and named by you. Without folders, create the first one from **Sort and options**. Once folders exist, a folder filter and **Folder actions** (new, rename, delete; deleting keeps its notes) appear at the top of the list.
 - In the workbench, drag the list's right edge to resize it (double-click to reset), or hide the list with the button in the top-right corner to focus on writing. The title, formatting toolbar and body share a left edge, with a readable maximum width and spare space on the right.
@@ -25,14 +26,16 @@ Jot is a human-owned notes and lightweight-document workbench for DSH. Write par
 ### Editing
 
 - **New** puts the cursor in the title; press Enter to continue in the body. An untouched new empty note is removed when you leave it. Notes you have edited, pinned or moved to a folder are kept, even if you later clear the body.
-- Bold, italic, underline and checklist are always on the toolbar. **Style** offers body text, headings 1–3, bullet and numbered lists, quote, code block, strikethrough, inline code, divider, clear formatting, seven text colors and six highlights. Colors switch to readable shades in dark themes; saving and export keep the original palette.
+- Bold, italic, underline and checklist are always on the toolbar. **Style** offers body text, headings 1–3, bullet and numbered lists, quote, code block, strikethrough, inline code, divider, clear formatting, seven text colors and six highlights, each with its shortcut beside it (hidden in narrow panes, still shown on hover). Colors switch to readable shades in dark themes; saving and export keep the original palette.
+- Type `/` on an empty line for the insert menu: body text, headings 1–3, to-do list, bullet and numbered lists, quote, code block, table, divider and **Image or file**. Chinese input methods produce `、` from the same key, which works too. Keep typing to filter in Chinese, English or pinyin initials (`/bt` finds headings). Use ↑/↓ to choose, Enter or Tab to insert, and Escape to close while keeping what you typed. The menu opens only when the line holds nothing but the symbol and the filter with the caret at its end, so `/` and `、` inside sentences are unaffected; it never opens in tables.
 - You can also type `# `, `- `, `1. `, `[ ] `, `> `, `---` or `**bold**` to format as you write.
+- In a to-do, Mod+Enter checks or unchecks it. In a list or checklist, Alt+Shift+↑/↓ moves the current item up or down; nested items move within their own level.
 - **Find** searches, jumps and replaces inside the current note; Replace all is one undo step. Notes in Trash can be searched but not edited.
 - The top-right status shows saving. Notes save automatically; click **Unsaved** or press Mod+S to save immediately. A failure reads **Save failed · Retry**.
 
 ### Deleting and Trash
 
-- **Move to Trash** does not ask for confirmation; the notice at the bottom offers **Undo**.
+- **Move to Trash** does not ask for confirmation; the notice at the bottom offers **Undo**. The same applies to moving several selected notes, and Undo restores the whole batch.
 - In Trash a note can be restored, duplicated as a new note or exported. **Delete permanently** and **Empty Trash** ask for confirmation and cannot be undone. Images and files used only by the deleted notes are removed with them; files still used by another note, including one in Trash, are kept.
 
 ### Capture
@@ -83,7 +86,16 @@ Editing uses Command on macOS and Ctrl on Windows and Linux:
 | Undo / redo | Command + Z / Shift + Command + Z | Ctrl + Z / Ctrl + Shift + Z; also Ctrl + Y |
 | Bold / italic / underline | Command + B / I / U | Ctrl + B / I / U |
 | Find in note / save | Command + F / S | Ctrl + F / S |
+| Body text / heading 1–3 | Option + Command + 0 / 1–3 | Ctrl + Alt + 0 / 1–3 |
+| Bullet / numbered / to-do list | Shift + Command + 8 / 7 / 9 | Ctrl + Shift + 8 / 7 / 9 |
+| Quote / code block | Shift + Command + B / Option + Command + C | Ctrl + Shift + B / Ctrl + Alt + C |
+| Strikethrough / inline code / highlight | Shift + Command + S / Command + E / Shift + Command + H | Ctrl + Shift + S / Ctrl + E / Ctrl + Shift + H |
+| Check or uncheck this to-do | Command + Return | Ctrl + Enter |
+| Move this list item up / down | Option + Shift + ↑ / ↓ | Alt + Shift + ↑ / ↓ |
 | Search all notes | `/` | `/` |
+| Show all shortcuts | `?` | `?` |
+
+Press `?` inside Jot outside a text field, or choose **Keyboard shortcuts** in **Sort and options**, to see this table at any time. Block and text shortcuts are the editor's (Tiptap's) default keys. H4–H6 no longer have keys; older notes and AI-written level 4–6 headings still display normally. Mod+Enter only checks to-dos; elsewhere it keeps its line-break meaning. On the actual Desktop the Host or system may handle some of these keys first; see the [validation record](VALIDATION.md) for checked results.
 
 Clipboard actions stay with the system and editor; formatting and history follow the focused editor. With a note selected in the workbench, Mod+F/S find in or save that note; menus and dialogs keep their own keys. The list supports arrow keys, Home, End and Enter/Space; in selection mode Enter/Space toggles selection. Escape closes menus and dialogs and clears the search box.
 
@@ -130,7 +142,21 @@ Attachments are cleaned up when notes are deleted permanently or Trash is emptie
 | PDF | Embedded Chinese fonts, common styles, vector checkboxes, paginated tables, page numbers and PNG/JPEG images |
 | Word (DOCX) | Text formatting, numbered lists, to-do states, tables and PNG/JPEG images |
 
-Exports use the current draft; saving first is not required. Each export may reference up to 100 distinct attachments, with attachment bytes and the final file each limited to 50 MiB. PDF tables wider than 8 columns become labelled text; merged-cell content is kept but borders are approximated. PDF/DOCX keep names for GIF, WebP and other files. PDF embeds `assets/fonts/NotoSansSC-*.otf` under the [SIL Open Font License 1.1](../assets/fonts/OFL.txt); DOCX fonts depend on the reader. Exports are not pixel-identical to the editor.
+Single-note exports use the current draft; saving first is not required. Each export may reference up to 100 distinct attachments, with attachment bytes and the final file each limited to 50 MiB. PDF tables wider than 8 columns become labelled text; merged-cell content is kept but borders are approximated. PDF/DOCX keep names for GIF, WebP and other files. PDF embeds `assets/fonts/NotoSansSC-*.otf` under the [SIL Open Font License 1.1](../assets/fonts/OFL.txt); DOCX fonts depend on the reader. Exports are not pixel-identical to the editor.
+
+### Exporting many notes
+
+**Sort and options → Export all notes…** packages notes into one ZIP. With a folder or **Unfiled** selected, the item reads **Export these notes…** and exports only the current filter. Notes in Trash are never exported. Choose a format:
+
+| Format | Best for |
+| --- | --- |
+| Word (.docx, default) | Opens in Word, WPS and Pages, with PNG/JPEG images embedded |
+| PDF | Fixed layout for reading, printing and sharing |
+| Markdown | Plain text for Obsidian and other note apps; images link to the attachments folder |
+
+The ZIP holds one file per note in a directory per folder, with unfiled notes at the top level. Notes with the same name get “(2)” and so on; untitled notes are named after their first line. Every referenced file is included once, as the original, in `attachments/` (`附件/` in the Chinese interface), so GIF, WebP and other files that Word or PDF cannot embed are kept. The note you are editing is saved before exporting.
+
+One export holds at most 2,000 notes, or 500 as PDF because each PDF embeds its own Chinese font. Attachments and the final file are each limited to 200 MiB. For more, export one folder at a time or choose Word.
 
 ## Working with an agent
 
@@ -150,6 +176,9 @@ Exports use the current draft; saving first is not required. Each export may ref
 - Replacing the whole text is refused when the note has tables, images, files, colors or underline, so they are not flattened. The agent may retry with `allowFormattingLoss: true` only after you agree.
 - Updates, ticks and deletions require the exact `revision`, so other edits are never overwritten. Every call checks the current switch; the agent cannot turn its own access on.
 - Versions saved by AI are labelled **AI edited** in the list and the editor toolbar until you edit the note. The label is recorded separately in `jot.activity.json`, so older plugin versions still read the notes unchanged.
+- Select **AI edited** in the editor toolbar, or choose **Undo AI edits…** under **More note actions**, and confirm to return the note to how it was before AI edited it, saved as a new version of yours. Consecutive AI edits count as one run and are undone together; if you edited in between, only the latest run is undone. Only you can undo, including after turning AI collaboration off, and the AI version is not kept.
+- The version from before AI edits lives in `jot.agent-undo/`, at most one per note, and is removed when you edit, undo or permanently delete the note.
+- With AI collaboration on, notes without an **AI edited** label show a small icon in the editor toolbar as a reminder that AI can read and edit notes when you ask.
 
 The switch controls Jot's tools, not system-level file access. Notes are not automatically added to every model request; explicit reads or searches can include their content in the model's context.
 
@@ -160,6 +189,7 @@ The default data folder is `$DSH_HOME/jot`, or `~/.dsh/jot` when `DSH_HOME` is u
 - `jot.json`: notes, folders and the AI switch.
 - `jot.json.bak`: the last valid state before the latest save.
 - `jot.activity.json`: optional AI-edited labels; if missing or damaged, labels simply do not show.
+- `jot.agent-undo/`: optional versions from before AI edits, for undoing them; if missing or damaged, the undo is simply unavailable.
 - `.jot.lock`: the read/write lock, recording the owner PID.
 - `attachments/`: managed attachment files, `manifest.json` and their lock.
 
