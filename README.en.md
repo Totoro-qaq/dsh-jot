@@ -108,6 +108,8 @@ Press `?` inside Jot to see every shortcut. The common ones:
 
 Works with DSH 0.2.0-rc.2 (official macOS Desktop) and 0.2.1-alpha.1 (Web). Windows and Linux pass CI source checks, but the UI and shortcuts have not been tested on actual systems; each release's actual checks are in the [validation record](./docs/VALIDATION.md). Cloud sync, real-time collaboration, version history and drawing are not included.
 
+See [the proposed OMDSH author declaration](./docs/community/omdsh-intake.md) for intake metadata around the existing Profile Bundle. This is not market approval or installation authority; the repository, runtime and compatibility range remain unchanged.
+
 ## More
 
 - [Guide](./docs/GUIDE.en.md): attachment and export limits, AI tool details, backups and conflicts.

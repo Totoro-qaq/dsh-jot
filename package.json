@@ -23,7 +23,8 @@
     "assets/icons",
     "docs/VALIDATION.md",
     "docs/GUIDE.zh-CN.md",
-    "docs/GUIDE.en.md"
+    "docs/GUIDE.en.md",
+    "docs/community"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -62,6 +63,47 @@
         "@deepseek-ai/dsh-client-shortcuts",
         "@deepseek-ai/dsh-client-ui-commands"
       ]
+    }
+  },
+  "dshWorkshop": {
+    "schema": "omdsh-workshop-package/v1",
+    "type": "plugin",
+    "integration": {
+      "protocol": "harness-profile",
+      "artifact": "cordis.patch.yml"
+    },
+    "install": {
+      "mode": "transactional",
+      "adapter": "profile-bundle",
+      "failurePolicy": "generation-rollback",
+      "touchesCurrentBeforeActivation": false
+    },
+    "lifecycle": {
+      "activation": "restart-host",
+      "dispose": "supported"
+    },
+    "permissions": [
+      "filesystem:read",
+      "filesystem:write",
+      "http:register",
+      "tools:register",
+      "native:open",
+      "ui:extend"
+    ],
+    "compatibility": {
+      "dshVersions": ["0.2.0-rc.2", "0.2.1-alpha.1"]
+    },
+    "capability": {
+      "id": "dsh-jot",
+      "kind": "ui",
+      "invocation": "Open Jot in a synthetic workspace, create a public note, edit and save it, then reopen that note.",
+      "expected": "The note retains the exact saved public text after reopening. AI collaboration remains off unless the human explicitly enables it."
+    },
+    "evidence": {
+      "install": "docs/VALIDATION.md",
+      "failureIsolation": null,
+      "hotReload": null,
+      "remove": "docs/VALIDATION.md"
     }
   },
   "scripts": {
