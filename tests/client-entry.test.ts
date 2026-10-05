@@ -5,6 +5,7 @@ import { renderToString } from 'react-dom/server'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShortcutCommand, ShortcutContext } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { SidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { ActionSpec, CommandContribution } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { JotAppProps } from '../src/client/App.js'
 import { consumeJotCommand } from '../src/client/commands.js'
 import { apply, PANEL_ID, TAB_ID } from '../src/client/index.js'
@@ -25,14 +26,18 @@ class LocaleFixture {
   }
 }
 
-function entryFixture() {
+function entryFixture(options: { slashService?: boolean; existingSlash?: CommandContribution } = {}) {
   const locale = new LocaleFixture()
   const bodies = new Map<string, ComponentType<any>>()
   const registrations: Record<string, unknown>[] = []
   const tabTypes = new Map<string, Record<string, any>>()
   const keyboardCommands = new Map<string, ShortcutCommand>()
+  const slashCommands = new Map<string, CommandContribution>()
+  if (options.existingSlash) slashCommands.set(options.existingSlash.name, options.existingSlash)
   const selectedPanels: unknown[] = []
   const openedTabs: string[] = []
+  const openedSessionTabs: Array<{ sessionId: string; kind: string }> = []
+  let selectedSession: string | undefined
   let panelId: unknown = null
   let seatMounted: unknown = undefined
   const activeTabs = new Map<string, string>()
@@ -46,6 +51,12 @@ function entryFixture() {
   const retain = (result: unknown) => { if (typeof result === 'function') effects.push(result as () => void) }
   const context = {
     locale,
+    uiSession: { adapter: { current: { getSnapshot: () => ({ key: selectedSession }) } } },
+    commandUi: { register(contribution: CommandContribution) {
+      if (slashCommands.has(contribution.name)) throw new Error('duplicate contribution')
+      slashCommands.set(contribution.name, contribution)
+      return () => { if (slashCommands.get(contribution.name) === contribution) slashCommands.delete(contribution.name) }
+    } },
     shortcuts: {
       runtime: 'web', platform: 'macos',
       register(command: ShortcutCommand) {
@@ -72,17 +83,24 @@ function entryFixture() {
     sidebarRight: { mounted: { getSnapshot: () => seatMounted, subscribe() { return () => {} } },
       active() { return typeof seatMounted === 'string' ? { id: activeTabs.get(seatMounted) ?? 'jot-tab', kind: 'dsh-jot' } : undefined },
       tabDomain: { occurrence }, openTab(kind: string) { openedTabs.push(kind) },
+      openTabIn(sessionId: string, kind: string) { openedSessionTabs.push({ sessionId, kind }) },
     },
     layout: { panelInfo: { getSnapshot: () => ({ activePanelId: panelId }), subscribe() { return () => {} } }, selectPanel(id: unknown) { panelId = id; selectedPanels.push(id) } },
     effect(operation: () => unknown) { retain(operation()); return () => {} },
+    inject(dependencies: string[], operation: (scope: Context) => unknown) {
+      assert.deepEqual(dependencies, ['commandUi'])
+      if (options.slashService !== false) operation(context as unknown as Context)
+      return () => {}
+    },
   }
   const component = (key: string) => {
     const result = bodies.get(key)
     assert.ok(result, `missing native registration ${key}`)
     return result
   }
-  return { locale, bodies, tabTypes, keyboardCommands, selectedPanels, openedTabs, registrations, component, context,
-    showConversation(sessionId = 'conversation-a', tabId = 'jot-tab') { panelId = null; seatMounted = sessionId; activeTabs.set(sessionId, tabId) },
+  return { locale, bodies, tabTypes, keyboardCommands, slashCommands, selectedPanels, openedTabs, openedSessionTabs, registrations, component, context,
+    showConversation(sessionId = 'conversation-a', tabId = 'jot-tab') { panelId = null; seatMounted = sessionId; selectedSession = sessionId; activeTabs.set(sessionId, tabId) },
+    selectBeforeSidebarMount(sessionId: string) { selectedSession = sessionId },
     compactProps(sessionId = 'conversation-a', tabId = 'jot-tab') {
       return { sessionId, useTabInfo: () => ({
         sidebar: { expanded: true, fullscreen: false }, panel: { id: `pane-${tabId}` },
@@ -268,4 +286,90 @@ test('closing a pending compact tab and unmounting the plugin invalidate previou
   fixture.unmount()
   assert.equal(rendered!.onCommandClaim!(request.revision), false)
   assert.equal(fixture.keyboardCommands.size, 0)
+})
+
+const slashSession = (sessionId: string) => ({ sessionId } as Parameters<ActionSpec['run']>[0])
+
+test('the native slash action opens only its captured foreground session through the public tab API', () => {
+  const fixture = entryFixture()
+  fixture.mount()
+  fixture.showConversation('conversation-a')
+  const entry = fixture.slashCommands.get('jot')!
+  assert.equal(entry.ui.kind, 'action')
+  assert.equal(entry.icon, JotIcon)
+  assert.equal(entry.label!(), '打开随记')
+  assert.equal(entry.available(slashSession('conversation-a')), true)
+  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-a'))
+  assert.deepEqual(fixture.openedSessionTabs, [{ sessionId: 'conversation-a', kind: 'dsh-jot' }])
+  assert.deepEqual(fixture.selectedPanels, [])
+  fixture.showConversation('conversation-b')
+  assert.equal(entry.available(slashSession('conversation-a')), false)
+  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-a'))
+  assert.equal(fixture.openedSessionTabs.length, 1, 'a stale callback never redirects itself to the new conversation')
+  fixture.locale.select('en')
+  assert.equal(entry.label!(), 'Open Jot')
+  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-b'))
+  assert.deepEqual(fixture.openedSessionTabs.at(-1), { sessionId: 'conversation-b', kind: 'dsh-jot' })
+  fixture.unmount()
+})
+
+test('a selected conversation awaiting sidebar mount cannot act through the previously mounted session', () => {
+  const fixture = entryFixture()
+  fixture.mount()
+  fixture.showConversation('conversation-a')
+  const entry = fixture.slashCommands.get('jot')!
+  fixture.selectBeforeSidebarMount('conversation-b')
+  assert.equal(entry.available(slashSession('conversation-a')), false)
+  assert.equal(entry.available(slashSession('conversation-b')), false)
+  if (entry.ui.kind === 'action') {
+    entry.ui.run(slashSession('conversation-a'))
+    entry.ui.run(slashSession('conversation-b'))
+  }
+  assert.deepEqual(fixture.openedSessionTabs, [])
+  fixture.unmount()
+})
+
+test('an old composer action cannot open a sidebar after the user switches to the full notebook', () => {
+  const fixture = entryFixture()
+  fixture.mount()
+  fixture.showConversation('conversation-a')
+  const entry = fixture.slashCommands.get('jot')!
+  assert.equal(entry.available(slashSession('conversation-a')), true)
+  fixture.context.layout.selectPanel(PANEL_ID)
+  assert.equal(entry.available(slashSession('conversation-a')), false)
+  if (entry.ui.kind === 'action') entry.ui.run(slashSession('conversation-a'))
+  assert.deepEqual(fixture.openedSessionTabs, [])
+  fixture.unmount()
+})
+
+test('missing slash service or a foreign jot contribution preserves all existing notebook entry points', () => {
+  const foreign: CommandContribution = { name: 'jot', available: () => true, ui: { kind: 'action', run() {} } }
+  for (const options of [{ slashService: false }, { existingSlash: foreign }]) {
+    const fixture = entryFixture(options)
+    assert.doesNotThrow(() => fixture.mount())
+    assert.equal(fixture.bodies.has(`main:${PANEL_ID}`), true)
+    assert.equal(fixture.bodies.has(`sidebar.right.pane.tab:${TAB_ID}`), true)
+    assert.equal(fixture.keyboardCommands.size, 3)
+    assert.equal(fixture.slashCommands.get('jot'), options.existingSlash)
+    fixture.unmount()
+    assert.equal(fixture.slashCommands.get('jot'), options.existingSlash)
+  }
+})
+
+test('native remount replaces the slash entry once and a disposed old action cannot navigate', () => {
+  const fixture = entryFixture()
+  fixture.mount()
+  fixture.showConversation('conversation-a')
+  const old = fixture.slashCommands.get('jot')!
+  fixture.unmount()
+  assert.equal(fixture.slashCommands.size, 0)
+  fixture.mount()
+  const fresh = fixture.slashCommands.get('jot')!
+  assert.notEqual(old, fresh)
+  assert.equal(fixture.slashCommands.size, 1)
+  if (old.ui.kind === 'action') old.ui.run(slashSession('conversation-a'))
+  assert.deepEqual(fixture.openedSessionTabs, [])
+  if (fresh.ui.kind === 'action') fresh.ui.run(slashSession('conversation-a'))
+  assert.equal(fixture.openedSessionTabs.length, 1)
+  fixture.unmount()
 })

@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-shortcuts/client'
+import type {} from '@deepseek-ai/dsh-client-ui-commands/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { JotApp } from './App.js'
@@ -16,6 +17,7 @@ import { createHostAttachmentPreview } from './host-attachments.js'
 import { defaultJotApi } from './api.js'
 import { createAttachmentDialogHandoff } from './attachment-dialog.js'
 import { createCommandBus, registerJotCommands, type JotCommandRequest, type JotCompactRecipient } from './commands.js'
+import { hasJotSlashModal, registerJotSlashCommand } from './slash-commands.js'
 
 export const name = 'dsh-jot-client'
 export const inject = ['slots', 'locale', 'layout', 'sidebarRightTabs', 'sidebarRight', 'uiSession', 'shortcuts']
@@ -90,6 +92,17 @@ export function apply(ctx: Context): void {
     try { return registerJotCommands(ctx.shortcuts, { chinese, run: route }) }
     catch { return () => {} /* A Host without these registrations keeps the on-screen buttons. */ }
   }, 'dsh-jot: keyboard commands')
+  // This child waits for the official slash surface; the notebook remains
+  // usable in custom hosts that omit that service entirely.
+  ctx.inject(['commandUi'], scope => {
+    scope.effect(() => registerJotSlashCommand(scope.commandUi, {
+      chinese,
+      isCurrentSession: sessionId => ctx.uiSession.adapter.current.getSnapshot().key === sessionId
+        && ctx.sidebarRight.mounted.getSnapshot() === sessionId && ctx.layout.panelInfo.getSnapshot().activePanelId === null,
+      blocked: () => hasJotSlashModal(typeof document === 'undefined' ? undefined : document),
+      open: session => ctx.sidebarRight.openTabIn(session.sessionId, TAB_KIND),
+    }), 'dsh-jot: slash action')
+  })
   // LocaleRuntime exposes prototype methods; retaining their owning object is required.
   const subscribeLocale = (listener: () => void) => ctx.locale.subscribe(listener)
   const readLocale = () => ctx.locale.getSnapshot()

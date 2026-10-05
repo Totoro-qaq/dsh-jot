@@ -2,6 +2,21 @@
 
 Dates: 2026-10-02 through 2026-10-05 (Asia/Shanghai). Each section applies only to the version it names.
 
+## 0.2.6 development — official `/jot` client action
+
+Verified 2026-10-05. `pnpm check` passed all **269 tests**, typecheck and Host/Client build; prepack and package-export checks passed. An independent review repeated 21 slash/entry tests and found no confirmed blocker. The optional Cordis injection was exercised with the real registry for service arrival, replacement and unload; regressions also cover stale sessions, visible modal guards, duplicate client contributions and preservation of the existing entries.
+
+The hash-named `0.2.6-dev.0` candidate was installed through the official CLIs in isolated DSH **0.2.1-alpha.1 Web** and **0.2.0-rc.2 macOS Desktop** profiles. Both installed Clients matched SHA-256 `b2c3d8eedfb38ba073f3622c38589b550a08d0d9a72e700dbe1a1d5b03f81f21`.
+
+- Both Hosts displayed **打开随记 / jot** in the official slash menu. Enter on bare `/jot` opened the current conversation's Jot tab and left an empty composer. Menu invocation consumed only `/jot` from Web's `待记内容 /jot` and Desktop's `public draft /jot`, preserving the other draft text.
+- Web also selected the menu action with the mouse and preserved a pending public TXT attachment. The conversation's message count and recorded token usage remained unchanged during these successful command invocations.
+- One Desktop automation attempt clicked a text-only accessibility node, which dismissed the menu; its later Enter sent the public test text. Generation was stopped. A subsequent direct Enter with the candidate visible and the composer focused preserved the draft and opened Jot. This accidental test request is distinct from executing the client action.
+- Original Desktop notes and attachments remained byte-for-byte unchanged. The test GUI was closed and its temporary public-note directory override restored to the previous profile. The native screenshot API returned a distorted thumbnail, so Desktop acceptance here rests on observed native controls and text rather than a visual-layout claim.
+
+The implementation registers `ui.kind: 'action'` and only calls the official `openTabIn` API for the captured, still-current conversation. The official command owner consumes the token; Jot does not submit prompts or rewrite attachments. A duplicate client name is isolated without replacing the other contribution. A same-name Host command follows the official candidate-synthesis failure behavior; the SDK exposes no public Host command catalog for a plugin to preflight that collision.
+
+This is development acceptance, not npm publication. Native Windows/Linux slash interaction remains unverified; the previous version's layout, keyboard and table acceptance below does not imply new testing of those features here.
+
 ## 0.2.5 — official Web and macOS Desktop acceptance
 
 Verified 2026-10-04–05 (Asia/Shanghai) with Node 22.23.1. `pnpm check` passed all **257 tests**, typecheck and Host/Client build; prepack and package-export checks passed. The first PR CI also passed Linux Node 22.19.0 / 24, Windows Node 24 and macOS Node 24. CI for the final follow-up commit and publication are checked separately.

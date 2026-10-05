@@ -104,6 +104,7 @@ Palette colors are stored as a finite set of hex values; dark themes remap them 
 - [x] Mac／Windows Desktop 正文聚焦时，通过 DSH 公开 fixed-shortcut 协议暂时保留 Mod+B；退出正文或卸载恢复，不修改用户持久设置。
 - [x] Mac Desktop 的 Cmd+Z／Cmd+Shift+Z 使用正文焦点期限内的公开命令路由。
 - [x] 「打开随记」「新建笔记」「摘录选中的文字」通过当前公开接口注册为 DSH 键盘命令，可在宿主设置中查找和绑定；默认不绑定按键，由用户自行设置。对话可见时使用右侧栏，否则打开工作台；对话框打开时不在背景执行。
+- [x] 开发版 `/jot` 通过官方斜杠菜单打开当前会话的随记侧栏；指令片段由宿主消费，保留其他草稿文字和附件。
 - [x] 对话框和菜单通过 Portal 避免侧栏裁剪，处理键盘导航、焦点恢复和视口内定位。
 
 ### 当前限制

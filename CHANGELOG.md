@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — 0.2.6 development
+
+- Add `/jot` through the official client slash action. Bare Enter and menu selection open Jot beside the current conversation, consuming the command token while preserving other draft text and attachments.
+- Keep this contribution isolated from existing Jot entries when the slash service is absent or a client command name is already occupied; stale session invocations cannot navigate another conversation.
+
 ## 0.2.5 — 2026-10-05
 
 ### Fixed

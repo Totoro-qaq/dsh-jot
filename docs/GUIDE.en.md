@@ -10,6 +10,7 @@ Jot is a human-owned notes and lightweight-document workbench for DSH. Write par
 
 - **Jot** in the left navigation opens the full workbench without selecting a conversation. The workbench reopens the note you were last reading.
 - During a conversation, choose **Jot** in the official right sidebar's new-tab guide. The compact tab switches between the list and a note and adds nothing to the chat composer.
+- The development build adds `/jot`: enter the bare command in the chat composer and press Enter, or choose **Open Jot** from the slash menu. This client action consumes the command token and preserves other draft text and attachments.
 - **Open full notes** in the compact tab carries the current note and any unsaved draft into the workbench.
 
 ### Note list

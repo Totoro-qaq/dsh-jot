@@ -52,6 +52,7 @@ Restart the corresponding Host afterwards. Desktop and Web installations are ind
 
 1. Choose **Jot** in the left navigation and press **New**. Press Enter in the title to continue in the body.
 2. During a conversation, choose **Jot** in the right sidebar's new-tab guide to write beside it.
+   The development build also supports `/jot` in the chat composer: press Enter or choose **Open Jot** from the slash menu to open the current conversation's Jot tab while preserving other draft text and attachments.
 3. To get AI help, turn on **Allow AI collaboration** at the bottom of the list, then tell it which note to read or update.
 
 ![Jot compact right-sidebar tab beside a conversation in the actual DSH Host, showing the English interface](./assets/readme/sidebar-en.jpg)

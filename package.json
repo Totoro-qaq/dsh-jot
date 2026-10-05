@@ -1,6 +1,6 @@
 {
   "name": "dsh-jot",
-  "version": "0.2.5",
+  "version": "0.2.6-dev.0",
   "description": "Human-editable notes, todos and documents for DeepSeek Harness, with search, tables, attachments, export and optional agent collaboration.",
   "type": "module",
   "license": "MIT",
@@ -59,7 +59,8 @@
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-client-ui-session",
-        "@deepseek-ai/dsh-client-shortcuts"
+        "@deepseek-ai/dsh-client-shortcuts",
+        "@deepseek-ai/dsh-client-ui-commands"
       ]
     }
   },
@@ -103,7 +104,8 @@
     "@deepseek-ai/dsh-util-workspace-path": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/schemastery": "~3.18.4 || 3.18.5-alpha.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "@deepseek-ai/dsh-client-ui-commands": "0.2.0-rc.2 || 0.2.1-alpha.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5-alpha.1",
@@ -128,7 +130,8 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "tsx": "^4.20.6",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "@deepseek-ai/dsh-client-ui-commands": "0.2.1-alpha.1"
   },
   "packageManager": "pnpm@11.22.0",
   "author": {
