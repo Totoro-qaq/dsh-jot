@@ -67,7 +67,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.mjs",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "dev": "node --import tsx dev/server.ts",
     "icons": "node --import tsx dev/sync-icons.mts",

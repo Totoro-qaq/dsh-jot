@@ -4,7 +4,7 @@ Jot is a human-editable notes and lightweight document space inside DeepSeek Har
 
 ## Development
 
-Use Node.js `^22.19.0 || >=24.0.0` and the pnpm version declared in `package.json` (currently 11.22.0). Version 0.2.5 declares DSH 0.2.0-rc.2 and 0.2.1-alpha.1 compatibility; development DSH packages use 0.2.1-alpha.1. Web and Desktop are separate Host profiles, and their actual checks must name the runtime tested.
+Use Node.js `^22.19.0 || >=24.0.0` and the pnpm version declared in `package.json` (currently 11.22.0). Jot declares DSH 0.2.0-rc.2 and 0.2.1-alpha.1 compatibility; development DSH packages use 0.2.1-alpha.1. Web and Desktop are separate Host profiles, and their actual checks must name the runtime tested.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -37,9 +37,13 @@ Include your Jot and DSH versions, operating system, Web/Desktop profile, steps 
 
 ## Release checks
 
-Before a release, run the checks above, verify the package version and published-file list, and exercise the final packaged bytes in the actual Host. Update the changelog and validation record with the work that was actually checked. Publishing is a separate maintainer action; CI does not publish npm packages automatically.
+Before a release, verify the package version and published-file list, and update the changelog and validation record. Run the source checks and repeat the actual Host checks affected by the change; release-only automation changes do not require editor screenshots or a new product version.
 
-The current frozen 0.2.5 candidate has passed local checks with **246 tests**, including 11 client cache-ordering and five command/fresh-note lifecycle regressions added after the earlier 230-test UI candidate. Those source results do not transfer earlier Host observations to a changed Client. Keep each archive hash, compiled Host/Client hash and observation together, then repeat the affected UI checks against the installed final build. Documentation and screenshots may change a release archive's hash while its compiled code remains the same; record both.
+Publish a stable GitHub Release for its reviewed `vX.Y.Z` tag. [`publish.yml`](./.github/workflows/publish.yml) checks out that exact tag, verifies package identity/version and main-branch ancestry, runs the source/build/package checks and uploads the checked archive to npm with OIDC provenance. Configure the npm trusted publisher once for **Totoro-qaq / dsh-jot / publish.yml**, with direct **npm publish** allowed; no `NPM_TOKEN` secret is needed. Package settings can require one initial security verification for this binding.
+
+To retry an interrupted upload, run **Publish npm → Run workflow** from `main` and enter the same stable tag. An existing npm version is skipped without rewriting it or moving `latest`; registry lookup failures stop the run. Missing old versions cannot move `latest` backwards. This also supports retrying `v0.2.6`, whose tag predates the publishing tools. Prerelease GitHub Releases are skipped.
+
+Keep each archive hash, compiled Host/Client hash and observation together. Documentation and screenshots may change a release archive's hash while its compiled code remains the same; record both. Current per-version results are in [docs/VALIDATION.md](./docs/VALIDATION.md).
 
 For UI releases, verify all three Jot commands in the Host's keyboard settings, their initially unbound state, custom binding persistence, full-workbench/sidebar routing, title focus and dialog guards. Check gray text, highlights, menus and table borders in the Host's actual dark theme. Exercise row/column controls, repeated undo/redo with a save between each operation, committed column widths, Escape during a live drag and Auto fit. A preview or a Node test does not replace these interactions.
 
