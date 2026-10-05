@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="./assets/readme/jot-icon.svg" width="80" height="80" alt="Jot colorful bookmark icon">
+  <img src="./assets/readme/jot-icon.svg" width="88" height="88" alt="Jot colorful bookmark icon">
 </p>
 
 <h1 align="center">Jot · 随记</h1>
 
-<p align="center">Notes, to-dos and lightweight documents inside DSH. You own the content; AI helps only when you ask.</p>
+<p align="center"><strong>A notebook beside your conversations.</strong><br>Jot down ideas, to-dos and light documents that stay yours, and ask AI to help only when you want it to.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/dsh-jot"><img src="https://img.shields.io/npm/v/dsh-jot?label=npm&color=3B8C76" alt="npm version"></a>
@@ -13,26 +13,18 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">中文</a> · English · <a href="./docs/GUIDE.en.md">Guide</a> · <a href="./CHANGELOG.md">Changelog</a> · <a href="./docs/VALIDATION.md">Validation</a>
+  <a href="#install">Install</a> · <a href="./docs/GUIDE.en.md">Guide</a> · <a href="./CHANGELOG.md">Changelog</a> · <a href="./README.md">中文</a>
 </p>
 
 ![Jot full workbench in the actual DSH Host, showing notes, checklists, tables, colors and highlights in English](./assets/readme/workbench-en.jpg)
 
-*Browse and organize in the full workbench; write beside a conversation in the right sidebar. Screenshots show example notes in the actual Host.*
+> **New in the 0.2.6 development build:** type `/` on an empty line to insert headings, checklists and tables; type `/jot` in the chat composer to find a note; export every note to Word, PDF or Markdown; undo AI edits in one step. The badge above shows the current npm release; see the [changelog](./CHANGELOG.md) for details.
 
 ## Why Jot
 
-- **You write, AI assists.** Ordinary document editing, no Markdown required. AI collaboration starts off, and even when on, AI reads or edits notes only when asked.
-- **Right beside the conversation.** Open the full workbench from the left navigation, or a compact tab in the right sidebar while you chat.
-- **Local storage.** Notes live in the DSH data folder; Jot does not provide cloud sync. Export to Markdown, Word, PDF or TXT at any time. With AI collaboration enabled, notes read by an agent enter the current conversation and the selected model's context.
-
-## What it does
-
-- **Write:** headings, bold, italic, underline, lists, checkable to-dos, quotes, code, tables, text colors and highlights. Tables support row/column editing and draggable widths.
-- **Find:** search titles and body text (title matches first), find and replace inside a note; pins, recent edits, optional folders, sorting and multi-select. The list shows checklist progress such as `2/5`.
-- **Collect:** capture selected text into a new or the current note; paste screenshots or drop files. Attachments open in DSH's official viewers for Word, spreadsheets, PDF, images and text.
-- **Stay safe:** autosave, recovery drafts, and conflicts that keep your writing. Moving to Trash can be undone; deleting permanently also removes files only that note used.
-- **Work with AI:** AI can write headings and checklists in simple Markdown, append items to a checklist and tick a single item. Notes changed by AI are labelled “AI edited” until you edit them.
+| Right beside the conversation | You write, AI helps | Your data stays yours |
+| --- | --- | --- |
+| Open the full workbench from the left navigation, or write in the right sidebar while you chat. `/jot` finds a note from the composer. | AI collaboration starts off. When on, AI reads or edits only when you ask; notes it changed are labelled **AI edited** and can be undone in one step. | Notes live in your local DSH data folder with no cloud sync. Export everything to Word, PDF or Markdown at any time. |
 
 ## Install
 
@@ -44,58 +36,63 @@ dsh plugin --profile desktop add dsh-jot
 dsh plugin --profile web add dsh-jot
 ```
 
-Restart the corresponding Host afterwards. Desktop and Web installations are independent. The official Desktop can enable its bundled CLI through the application menu's “Manage dsh command…”. The CLI requires Node.js `^22.19.0 || >=24`.
+Restart DSH and **Jot** appears in the left navigation; press **New** to start writing. Desktop and Web are installed separately. The official Desktop can enable its bundled CLI through the application menu's “Manage dsh command…”; the CLI requires Node.js `^22.19.0 || >=24`.
 
-**Upgrade:** `dsh plugin --profile desktop add dsh-jot@latest`, then restart the Host. **Uninstall:** `dsh plugin --profile desktop remove dsh-jot`; your notes are kept. Use `web` instead of `desktop` for the Web UI.
+**Upgrade:** `dsh plugin --profile desktop add dsh-jot@latest`, then restart. **Uninstall:** `dsh plugin --profile desktop remove dsh-jot`; your notes are kept. Use `web` instead of `desktop` for the Web UI.
 
-## Get started
+## What it does
 
-1. Choose **Jot** in the left navigation and press **New**. Press Enter in the title to continue in the body.
-2. During a conversation, choose **Jot** in the right sidebar's new-tab guide to write beside it.
-   The development build also supports `/jot` in the chat composer: press Enter or choose **Open Jot** from the slash menu to open the current conversation's Jot tab while preserving other draft text and attachments.
-3. To get AI help, turn on **Allow AI collaboration** at the bottom of the list, then tell it which note to read or update.
+**Writing that stays out of the way**
+
+- Write like an ordinary document: headings, lists, checkable to-dos, quotes, code, tables, text colors and highlights. No Markdown required.
+- Type `/` on an empty line for an insert menu (Chinese input methods can use `、`). Typing `# `, `- ` or `[ ] ` also formats as you go.
+- Tables support row and column editing and draggable widths; checklist items can be ticked and reordered from the keyboard.
+
+**Find it again**
+
+- Search titles and body text, with title matches first and the matching sentence shown; find and replace inside a note.
+- Pins, recent edits, optional folders, sorting and multi-select. The list shows checklist progress such as `2/5`.
+
+**Collect as you go**
+
+- Capture selected text into a new or the current note; paste screenshots or drop files, previewed in DSH's official viewers for Word, spreadsheets, PDF and images.
+
+**Nothing gets lost**
+
+- Autosave, recovery drafts, and conflicts that keep your writing. Deleting notes, one or many at a time, can be undone; permanent deletion asks first.
+- Export a note to Word, PDF, Markdown or TXT, or package every note or one folder into a single ZIP with images embedded in Word and PDF.
 
 ![Jot compact right-sidebar tab beside a conversation in the actual DSH Host, showing the English interface](./assets/readme/sidebar-en.jpg)
 
 ## Working with AI
 
-When the switch is on, the agent can use these tools. Every call checks the current switch, and AI cannot turn it on.
+Turn on **Allow AI collaboration** at the bottom of the list, then tell the AI which note to read or update, for example:
 
-| Tool | Purpose |
-| --- | --- |
-| `jot_list` / `jot_read` | Search notes; read the text and the numbered to-do items |
-| `jot_create` | Create a note from simple Markdown: `#` headings, `- [ ]` to-dos, lists, quotes, tables |
-| `jot_update` | Append (preferred) or retitle; whole-text replacement refuses to drop tables, files or colors |
-| `jot_set_task` | Check or uncheck one to-do item without touching anything else |
-| `jot_delete` | Move a note to Trash; you can restore it |
+> Add the three decisions we just agreed on to my Jot note *Weekly sync*.
+>
+> Tick item 2 in *Follow-ups*.
 
-Try: “Add the three decisions we just agreed on to my Jot note *Weekly sync*” or “Tick item 2 in *Follow-ups*.” Notes are not automatically added to the conversation; AI reads them through these tools when needed.
+- AI can search, read, create and append to notes, tick a single to-do, or move a note to Trash. Every call checks the switch, and AI cannot turn it on.
+- Replacing a whole note refuses to drop tables, files or colors unless you agree.
+- Notes changed by AI are labelled **AI edited**. Select the label to undo, returning the note to how it was before AI edited it; consecutive AI edits are undone together.
+- Notes are never added to each conversation turn automatically; AI reads them only through its tools.
 
-## Shortcuts
+See the [guide](./docs/GUIDE.en.md#working-with-an-agent) for the tools and the Markdown they accept.
+
+## Keyboard shortcuts
+
+Press `?` inside Jot to see every shortcut. The common ones:
 
 | Action | macOS | Windows / Linux |
 | --- | --- | --- |
-| Bold / italic / underline | ⌘B / I / U | Ctrl+B / I / U |
-| Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Shift+Z; also Ctrl+Y |
+| Bold / italic / underline | ⌘B / ⌘I / ⌘U | Ctrl+B / I / U |
+| Heading 1–3 | ⌥⌘1–3 | Ctrl+Alt+1–3 |
+| To-do list / check this to-do | ⇧⌘9 / ⌘↩ | Ctrl+Shift+9 / Ctrl+Enter |
+| Move list item up / down | ⌥⇧↑ / ⌥⇧↓ | Alt+Shift+↑ / ↓ |
 | Find in note / save now | ⌘F / ⌘S | Ctrl+F / Ctrl+S |
-| Search all notes | `/` (inside Jot, outside a text field) | same |
+| Search all notes | `/` (outside a text field) | same |
 
-You can also type `# ` for a heading, `- ` for a list, `1. ` for numbers, `[ ] ` for a to-do, `> ` for a quote, `---` for a divider and `**bold**`.
-
-“Jot: Open Jot”, “Jot: New note” and “Jot: Capture selected text” appear in DSH's keyboard settings without default keys, so you can bind them as you like.
-
-## Data
-
-Notes are stored in `$DSH_HOME/jot` (`~/.dsh/jot` when unset); back up the whole folder. Desktop and Web share notes when configured with the same data folder. Recovery drafts also live in the interface's Local Storage. Attachments default to 20 MiB each and 500 MiB in total. Every human and AI change is revision-checked, so nothing is silently overwritten.
-
-## Compatibility
-
-| Environment | Status |
-| --- | --- |
-| DSH 0.2.0-rc.2 · Official macOS Desktop | Current Desktop release; see the [validation record](./docs/VALIDATION.md) for actual checks |
-| DSH 0.2.1-alpha.1 · Web | Three bindable commands, dark mode and table controls checked in the actual Host; alpha is a prerelease |
-| Windows / Linux | Source checks pass in CI; UI and shortcuts not yet tested on actual systems |
-| Cloud sync, real-time collaboration, version history, drawing | Not included |
+“Open Jot”, “New note” and “Capture selected text” have no default keys. Search for “Jot” in DSH's keyboard shortcut settings to bind them.
 
 ## FAQ
 
@@ -103,7 +100,13 @@ Notes are stored in `$DSH_HOME/jot` (`~/.dsh/jot` when unset); back up the whole
 
 **Will uninstalling or upgrading lose notes?** No. Notes live in the DSH data folder, separate from the plugin package, and older versions can still read notes saved by newer ones.
 
+**Where are notes stored, and how do I back them up?** In `$DSH_HOME/jot` (`~/.dsh/jot` when unset); back up the whole folder. Desktop and Web share notes when they use the same data folder. Attachments default to 20 MiB each and 500 MiB in total.
+
 **Why does an action mention “kept drafts”?** Another panel has unsaved changes to that note. Open it and load the latest version or save the draft as a new note first, so neither side's writing is lost.
+
+## Compatibility
+
+Works with DSH 0.2.0-rc.2 (official macOS Desktop) and 0.2.1-alpha.1 (Web). Windows and Linux pass CI source checks, but the UI and shortcuts have not been tested on actual systems; each release's actual checks are in the [validation record](./docs/VALIDATION.md). Cloud sync, real-time collaboration, version history and drawing are not included.
 
 ## More
 
