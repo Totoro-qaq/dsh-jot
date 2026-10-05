@@ -108,6 +108,8 @@ dsh plugin --profile web add dsh-jot
 
 支持 DSH 0.2.0-rc.2（官方 macOS Desktop）与 0.2.1-alpha.1（Web）。Windows 和 Linux 通过 CI 源码检查，界面与快捷键尚未实机验收；每个版本的实际验收范围见[验证记录](./docs/VALIDATION.md)。暂不提供云同步、多人实时编辑、历史版本和绘图。
 
+OMDSH 收录材料见[作者投稿声明](./docs/community/omdsh-intake.zh-CN.md)。这是现有 Profile Bundle 的元数据草案，不是市场审核通过或安装授权；不迁移仓库、不改变运行代码或兼容范围。
+
 ## 了解更多
 
 - [使用指南](./docs/GUIDE.zh-CN.md)：附件与导出限制、AI 工具细节、数据备份和冲突处理。
