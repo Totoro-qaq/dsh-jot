@@ -8,7 +8,7 @@ import { columnResizingPluginKey } from '@tiptap/pm/tables'
 import { findMatches, replaceAllMatches, replaceMatch } from './document-find.js'
 import { highlightWindow } from './find-highlights.js'
 import { editorShortcut, editorShortcutLabel, type EditorShortcut } from './editor-shortcuts.js'
-import { createJotExtensions, managedAttachmentUrl } from './editor-extensions.js'
+import { createJotExtensions, managedAttachmentUrl, refreshTaskCheckboxLabels } from './editor-extensions.js'
 import { syncEditorContent } from './editor-content.js'
 import { JotActionIcon, type JotActionIconName } from './icons.js'
 import { TableControls } from './TableControls.js'
@@ -214,6 +214,7 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
     if (readOnly) editor.view.dispatch(editor.state.tr.setMeta(columnResizingPluginKey, { setHandle: -1, setDragging: null }))
     editor.view.dom.setAttribute('aria-label', en ? 'Note content' : '笔记正文')
     editor.view.dom.setAttribute('data-placeholder', en ? 'Start writing…' : '从这里开始记…')
+    refreshTaskCheckboxLabels(editor, locale)
   }, [readOnly, en])
 
   const editor = instance.current

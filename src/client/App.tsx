@@ -15,6 +15,7 @@ import { ShortcutHelp } from './ShortcutHelp.js'
 import { ExportDialog } from './ExportDialog.js'
 import { appendExcerpt, duplicateNoteInput, sortNotes, type NoteSortMode } from './note-actions.js'
 import { downloadNote } from './downloads.js'
+import { exportSavedLibrary } from './library-export.js'
 import { describeError } from './errors.js'
 import { jotStyles } from './styles.js'
 import { NoteList } from './NoteList.js'
@@ -741,13 +742,18 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   /** Restore the version from before the latest run of AI edits; the note must be showing that AI version. */
   const revertAgent = () => void perform(async () => {
     const current = draftRef.current
-    if (!current || current.dirty || !api.revertAgentEdit) return
+    if (!current || current.dirty || uploadBusy || !api.revertAgentEdit) return
     const saved = await api.revertAgentEdit(current.noteId, current.baseRevision)
     selectionGeneration.current++
-    const next = draftFromNote(saved)
+    // A pending upload or another asynchronous editor operation may have
+    // created a draft while the revert was running. Keep that writing just as
+    // a normal remote refresh does, and surface the new revision as a conflict.
+    const cached = drafts.current.get(saved.id)
+    const result = cached ? reconcileDraft(cached, saved) : { draft: draftFromNote(saved), remoteChanged: false }
+    const next = result.draft
     drafts.current.set(saved.id, next)
     if (draftRef.current?.noteId === saved.id) installDraft(next)
-    setStatus(saved.id, { phase: 'saved' })
+    setStatus(saved.id, { phase: result.remoteChanged ? 'conflict' : next.dirty ? 'dirty' : 'saved' })
     setRevertConfirm(false)
     await refresh()
     showToast(copy('已撤销 AI 的修改', 'AI edits undone'))
@@ -759,10 +765,15 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     setBusy(true); setExportError('')
     storage.set('dsh-jot:export-format:v1', format)
     try {
-      const current = draftRef.current
-      if (current?.dirty && statusesRef.current[current.noteId]?.phase !== 'conflict') await saveDraft(current.noteId)
       const folderId = folderFilter === '__all__' ? undefined : folderFilter === '__unfiled__' ? null : folderFilter
-      const result = await api.exportLibrary({ format, locale, ...folderId === undefined ? {} : { folderId } })
+      const result = await exportSavedLibrary({
+        draft: draftRef.current,
+        readDraft: id => drafts.current.get(id),
+        conflicted: id => statusesRef.current[id]?.phase === 'conflict',
+        save: saveDraft,
+        export: () => api.exportLibrary!({ format, locale, ...folderId === undefined ? {} : { folderId } }),
+        unsavedMessage: copy('草稿尚未保存，请先处理保留的草稿，再导出笔记。', 'The draft is not saved. Resolve the kept draft before exporting notes.'),
+      })
       downloadNote(result)
       setExportOpen(false)
       showToast(result.attachments
@@ -806,7 +817,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const agentEditedIds = useMemo(() => new Set((snapshot?.notes ?? [])
     .filter(note => snapshot?.agentEdits?.[note.id]?.revision === note.revision).map(note => note.id)), [snapshot])
   const agentEdited = Boolean(draft && !draft.dirty && agentEditedIds.has(draft.noteId))
-  const agentUndoable = agentEdited && !selectedDeleted && Boolean(api.revertAgentEdit) && snapshot?.agentEdits?.[draft!.noteId]?.undo === true
+  const agentUndoable = agentEdited && !selectedDeleted && !uploadBusy && Boolean(api.revertAgentEdit) && snapshot?.agentEdits?.[draft!.noteId]?.undo === true
   const exportable = (snapshot?.notes ?? []).filter(note => note.deletedAt === null && (folderFilter === '__all__'
     || (folderFilter === '__unfiled__' ? note.folderId === null : note.folderId === folderFilter))).length
   const exportScope = folderFilter === '__all__' ? copy(`全部 ${exportable} 篇笔记`, `all ${exportable} notes`)

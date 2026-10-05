@@ -560,6 +560,12 @@ export const MAX_LIBRARY_PDF_NOTES = 500
 export const MAX_LIBRARY_EXPORT_BYTES = 200 * 1_024 * 1_024
 export interface LibraryExportNote { id: string; title: string; text: string; content: RichDoc; folderId: string | null }
 export interface LibraryExport extends NoteExport { notes: number; attachments: number }
+export interface LibraryExportOptions extends ExportOptions {
+  locale?: 'zh' | 'en'
+  now?: Date
+  /** Trusted host limit, optionally lowered for constrained hosts; requests cannot raise the 200 MiB cap. */
+  maxBytes?: number
+}
 
 /** The list's name for a note: its title, or its first line, as untitled notes appear in Jot. */
 function displayTitle(note: LibraryExportNote, untitled: string): string {
@@ -583,7 +589,7 @@ function uniquePath(used: Set<string>, directory: string, base: string, extensio
  * WebP and other attachments. Markdown links to that folder.
  */
 export async function exportJotLibrary(input: { notes: readonly LibraryExportNote[]; folders: readonly { id: string; name: string }[] },
-  format: LibraryExportFormat, options: ExportOptions & { locale?: 'zh' | 'en'; now?: Date } = {}): Promise<LibraryExport> {
+  format: LibraryExportFormat, options: LibraryExportOptions = {}): Promise<LibraryExport> {
   if (!LIBRARY_EXPORT_FORMATS.includes(format)) invalid('Unsupported export format')
   const en = options.locale === 'en'
   if (!input.notes.length) invalid('There are no notes to export')
@@ -591,6 +597,8 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
   if (format === 'pdf' && input.notes.length > MAX_LIBRARY_PDF_NOTES) {
     invalid(`Export at most ${MAX_LIBRARY_PDF_NOTES} notes as PDF at once; export one folder at a time or choose Word`)
   }
+  const maxBytes = options.maxBytes ?? MAX_LIBRARY_EXPORT_BYTES
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_LIBRARY_EXPORT_BYTES) invalid('Invalid library export size limit')
   const notes = input.notes.map(note => ({ ...note, content: validateRichDoc(note.content) }))
   const used = new Set<string>()
   const folders = new Map<string, string>()
@@ -611,7 +619,7 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
     if (!value || !Buffer.isBuffer(value.data) || value.size !== value.data.length || typeof value.name !== 'string'
       || typeof value.mimeType !== 'string') invalid('Invalid export attachment')
     total += value.size
-    if (total > MAX_LIBRARY_EXPORT_BYTES) invalid('Attachments exceed 200 MiB; export one folder at a time')
+    if (total > maxBytes) invalid('Attachments exceed 200 MiB; export one folder at a time')
     const name = filename(value.name)
     const dot = name.lastIndexOf('.')
     const assetPath = uniquePath(used, attachmentDirectory, dot > 0 ? name.slice(0, dot) : name, dot > 0 ? name.slice(dot) : '')
@@ -620,7 +628,17 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
 
   // Already-compressed files are stored, not deflated again.
   const entries: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {}
-  for (const file of assets.values()) entries[file.assetPath] = [file.data, { level: 0 }]
+  let archiveBytes = 22 // End-of-central-directory record.
+  const addEntry = (path: string, data: Uint8Array, compressed: boolean) => {
+    // Bound retained entry bytes before building the ZIP. Counting ZIP headers
+    // and conservative deflate overhead also prevents many duplicated embedded
+    // images from allocating an enormous archive before the final size check.
+    archiveBytes += data.byteLength + 76 + Buffer.byteLength(path, 'utf8') * 2
+      + (compressed ? Math.ceil(data.byteLength / 1_000) * 5 + 128 : 0)
+    if (archiveBytes > maxBytes) invalid('The export exceeds 200 MiB; export one folder at a time')
+    entries[path] = compressed ? data : [data, { level: 0 }]
+  }
+  for (const file of assets.values()) addEntry(file.assetPath, file.data, false)
   const untitled = en ? 'Untitled' : '无标题'
   for (const note of notes) {
     const directory = note.folderId ? folders.get(note.folderId) ?? '' : ''
@@ -630,13 +648,16 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
     if (format === 'md') {
       // Links are relative to the note's own folder.
       const local: Assets = directory ? new Map([...assets].map(([id, file]) => [id, { ...file, assetPath: `../${file.assetPath}` }])) : assets
-      entries[path] = strToU8(`# ${mdEscape(title)}\n\n${note.content.content.map(node => markdownBlock(node, local)).join('\n\n')}\n`)
+      addEntry(path, strToU8(`# ${mdEscape(title)}\n\n${note.content.content.map(node => markdownBlock(node, local)).join('\n\n')}\n`), true)
     } else {
-      entries[path] = [format === 'docx' ? await wordDocument(document, assets) : await pdfDocument(document, assets, options.fontDirectory), { level: 0 }]
+      const data = format === 'docx' ? await wordDocument(document, assets) : await pdfDocument(document, assets, options.fontDirectory)
+      if (data.length > MAX_EXPORT_BYTES) invalid('Export exceeds 50 MiB')
+      addEntry(path, data, false)
     }
   }
-  const buffer = Buffer.from(zipSync(entries, { level: 6 }))
-  if (buffer.length > MAX_LIBRARY_EXPORT_BYTES) invalid('The export exceeds 200 MiB; export one folder at a time')
+  const zipped = zipSync(entries, { level: 6 })
+  const buffer = Buffer.from(zipped.buffer, zipped.byteOffset, zipped.byteLength)
+  if (buffer.length > maxBytes) invalid('The export exceeds 200 MiB; export one folder at a time')
   const now = options.now ?? new Date()
   const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   return { buffer, filename: `${en ? 'Jot' : '随记'}-${day}.zip`, contentType: 'application/zip', notes: notes.length, attachments: assets.size }

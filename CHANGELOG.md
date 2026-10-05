@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 0.2.6 development
+## 0.2.6 — 2026-10-05
 
 ### Writing
 
@@ -26,10 +26,14 @@
 - To-do checkboxes announced English labels (“Task item checkbox for …”) twice in the Chinese interface. Labels follow the interface language, and the duplicate hidden text is no longer exposed.
 - Mod+Alt+4/5/6 created H4–H6 headings that the Style menu could neither show nor offer. Those keys no longer apply; stored H4–H6 still render and export.
 - Tables in the compact pane sat a few pixels right of the body text. The table control band now shrinks to the body padding, keeping tables aligned in every width.
+- Keep attachments referenced by an active pre-AI version when another note sharing the file is permanently deleted; clean up that version after a successful human revision.
+- Stop a library export if its draft cannot be saved, including conflicts or an older autosave still leaving newer text unsaved. Bound generated files and ZIP overhead before retaining the full archive.
+- Keep writing that arrives while Undo AI edits is pending, and show a conflict instead of replacing it with the restored version. Pending uploads disable Undo AI edits.
+- Refresh checkbox labels when a retained editor changes interface language without remounting it or changing content, selection, history or timestamps.
 
 ### Verification
 
-Local `pnpm check` passes with the new editor-key, slash-menu, agent-undo and library-export tests, and the features were exercised in the `pnpm dev` preview in light and dark themes and both widths. They have **not** yet been checked in an actual DSH Host; in particular the new editor keys may be handled first by the Desktop Host or the operating system.
+Local `pnpm check` passed **307 tests**, typecheck and Host/Client builds; packaging checks passed. Official **DSH 0.2.1-alpha.1 Web** and **0.2.0-rc.2 macOS Desktop** checks cover the `/jot` picker, checklist keys, insert menu and AI undo. Web also checks three real library ZIP downloads, batch Trash/Undo, scoped search and bilingual screenshots. See the [validation record](./docs/VALIDATION.md) for the exact candidates and remaining native-platform limits. Merge, CI and publication are recorded separately.
 
 ### Earlier in this cycle
 

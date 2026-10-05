@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { strFromU8, unzipSync } from 'fflate'
-import { exportJotLibrary, MAX_LIBRARY_EXPORT_NOTES, MAX_LIBRARY_PDF_NOTES, type ExportAttachment, type LibraryExportNote } from '../src/exports.js'
+import { exportJotLibrary, MAX_LIBRARY_EXPORT_BYTES, MAX_LIBRARY_EXPORT_NOTES, MAX_LIBRARY_PDF_NOTES, type ExportAttachment, type LibraryExportNote } from '../src/exports.js'
 import { describeError } from '../src/client/errors.js'
 import { JotApiError } from '../src/client/api.js'
 import { createJotHandler } from '../src/http.js'
@@ -87,8 +87,31 @@ test('library exports refuse empty, oversized and unknown requests', async () =>
   await assert.rejects(exportJotLibrary({ notes: many, folders: [] }, 'md'), invalid)
   const pdfMany = Array.from({ length: MAX_LIBRARY_PDF_NOTES + 1 }, (_, index) => note(String(index), `n${index}`, docFromMarkdown('x')))
   await assert.rejects(exportJotLibrary({ notes: pdfMany, folders: [] }, 'pdf'), invalid, 'PDF archives have their own, smaller cap')
-  const huge = { ...files[imageId]!, size: 201 * 1_024 * 1_024, data: Buffer.alloc(201 * 1_024 * 1_024) }
-  await assert.rejects(exportJotLibrary(library(), 'md', { attachmentLoader: async () => huge }), invalid)
+  await assert.rejects(exportJotLibrary(library(), 'md', { attachmentLoader: loader, maxBytes: png.length - 1 }), invalid)
+  for (const maxBytes of [0, -1, 1.5, MAX_LIBRARY_EXPORT_BYTES + 1]) {
+    await assert.rejects(exportJotLibrary(library(), 'md', { maxBytes }), invalid, 'trusted options can lower, but never raise, the size cap')
+  }
+})
+
+test('the archive budget counts generated notes and repeated embedded images before retaining the whole library', async () => {
+  const content = withImage('Shared image')
+  const notes = Array.from({ length: 12 }, (_, index) => note(String(index), `Note ${index}`, content))
+  const one = await exportJotLibrary({ notes: notes.slice(0, 1), folders: [] }, 'docx', { attachmentLoader: loader })
+  loads = 0
+  await assert.rejects(exportJotLibrary({ notes, folders: [] }, 'docx', { attachmentLoader: loader, maxBytes: one.buffer.length * 2 }), invalid)
+  assert.equal(loads, 1, 'the shared image is loaded once, but each generated Word file consumes the budget')
+
+  const pdf = await exportJotLibrary({ notes: notes.slice(0, 1), folders: [] }, 'pdf', { attachmentLoader: loader })
+  let generated = 0
+  await assert.rejects(exportJotLibrary({ notes, folders: [] }, 'pdf', {
+    attachmentLoader: loader, maxBytes: pdf.buffer.length * 2,
+    get fontDirectory() { generated++; return undefined },
+  }), invalid)
+  assert.ok(generated > 0 && generated <= 3, 'the lower byte budget stops PDF generation before all twelve notes and the final ZIP')
+
+  const text = Array.from({ length: 12 }, (_, index) => note(String(index), `Text ${index}`, docFromMarkdown('A'.repeat(1_000))))
+  await assert.rejects(exportJotLibrary({ notes: text, folders: [] }, 'md', { maxBytes: 2_000 }), invalid,
+    'highly compressible text still counts against the retained in-memory entries budget')
 })
 
 test('Host export and undo refusals reach the user as actionable sentences in their language', async () => {
@@ -102,8 +125,7 @@ test('Host export and undo refusals reach the user as actionable sentences in th
   assert.match(describeError(pdf, 'en'), /choose Word/u)
   const empty = await host(() => exportJotLibrary({ notes: [], folders: [] }, 'md'))
   assert.equal(describeError(empty, 'zh'), '这里没有可以导出的笔记。')
-  const big = await host(() => exportJotLibrary(library(), 'md', { attachmentLoader: async () =>
-    ({ ...files[imageId]!, size: 201 * 1_024 * 1_024, data: Buffer.alloc(201 * 1_024 * 1_024) }) }))
+  const big = await host(() => exportJotLibrary(library(), 'md', { attachmentLoader: loader, maxBytes: png.length - 1 }))
   assert.match(describeError(big, 'zh'), /200 MiB/u, 'not the single-note 50 MiB sentence')
   const undo = new JotApiError(404, 'NOT_FOUND', 'There is no agent edit to undo for this version')
   assert.equal(describeError(undo, 'zh'), '这一版已经不是 AI 修改后的版本，无法撤销。')
@@ -156,6 +178,7 @@ test('HTTP library export scopes to a folder or unfiled notes, never includes Tr
   assert.equal((await post({ format: 'txt' })).status, 400)
   assert.equal((await post({ format: 'md', folderId: '../x' })).status, 400)
   assert.equal((await post({ format: 'md', extra: true })).status, 400)
+  assert.equal((await post({ format: 'md', maxBytes: MAX_LIBRARY_EXPORT_BYTES + 1 })).status, 400, 'HTTP callers cannot change the host byte limit')
   const empty = await post({ format: 'md', folderId: 'missing-folder' })
   assert.equal(empty.status, 400, 'an empty scope explains itself instead of downloading nothing')
   assert.ok(filed.id)

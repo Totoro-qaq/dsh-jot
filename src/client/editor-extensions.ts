@@ -1,4 +1,4 @@
-import { Node, type Extensions } from '@tiptap/core'
+import { Node, type Editor, type Extensions } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -25,6 +25,20 @@ export function taskCheckboxLabel(text: string, locale: JotLocale): string {
   const name = text.trim()
   if (locale === 'en') return name ? `To-do: ${name}` : 'Empty to-do'
   return name ? `待办：${name}` : '空白待办'
+}
+
+/** A locale change retains NodeViews, so refresh their labels without editing the document. */
+export function refreshTaskCheckboxLabels(editor: Pick<Editor, 'state' | 'view'>, locale: JotLocale): void {
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'taskItem') return
+    const dom = editor.view.nodeDOM(position)
+    if (!dom || dom.nodeType !== 1) return
+    const element = dom as Element
+    const label = taskCheckboxLabel(node.textContent, locale)
+    element.querySelector(':scope > label > input[type="checkbox"]')?.setAttribute('aria-label', label)
+    const hiddenLabel = element.querySelector(':scope > label > span')
+    if (hiddenLabel) hiddenLabel.textContent = label
+  })
 }
 
 const JotTaskItem = TaskItem.extend({

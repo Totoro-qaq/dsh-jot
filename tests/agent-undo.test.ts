@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { createServer, type IncomingMessage } from 'node:http'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { createJotHandler } from '../src/http.js'
-import { AGENT_UNDO_DIRECTORY, JotStore, STATE_FILENAME, StoreError } from '../src/store.js'
+import { AGENT_UNDO_DIRECTORY, BACKUP_FILENAME, JotStore, STATE_FILENAME, StoreError } from '../src/store.js'
+import { AttachmentStore } from '../src/attachments.js'
 import { createJotTools } from '../src/tools.js'
-import { docFromMarkdown, docFromText } from '../src/model.js'
+import { docFromMarkdown, docFromText, documentAttachmentIds, type RichDoc } from '../src/model.js'
 
 const code = (expected: string) => (error: unknown) => error instanceof StoreError && error.code === expected
 
@@ -91,11 +92,108 @@ test('a damaged or oversized kept version is ignored instead of breaking the not
   await writeFile(join(directory, AGENT_UNDO_DIRECTORY, `${note.id}.json`), '{broken')
   await assert.rejects(notes.revertAgentEdit(note.id, agent.revision), code('NOT_FOUND'))
   assert.equal((await notes.getNote(note.id)).revision, agent.revision, 'a refused undo writes nothing')
+  await rm(join(directory, AGENT_UNDO_DIRECTORY, `${note.id}.json`))
+  await assert.rejects(notes.revertAgentEdit(note.id, agent.revision), code('NOT_FOUND'), 'a missing copy does not break ordinary reads')
+  await writeFile(join(directory, AGENT_UNDO_DIRECTORY, `${note.id}.json`), 'x'.repeat(2 * 1_048_576 + 1))
+  await assert.rejects(notes.revertAgentEdit(note.id, agent.revision), code('NOT_FOUND'), 'an oversized copy is refused before parsing')
+  assert.equal((await notes.readState()).notes[0]!.text, 'AI', 'the saved note remains readable with damaged optional data')
   // Permanent deletion removes a kept version together with its note.
   const again = await notes.updateNote(note.id, agent.revision, { appendContent: docFromText('AI 2') }, 'agent')
   const trashed = await notes.deleteNote(note.id, again.revision)
   await notes.purgeNotes([{ id: note.id, revision: trashed.revision }])
   assert.deepEqual(await readdir(join(directory, AGENT_UNDO_DIRECTORY)), [])
+})
+
+test('purging a shared attachment keeps the file needed by an active pre-AI version', async t => {
+  const { directory, store: notes } = await store(t)
+  const attachments = new AttachmentStore({ directory })
+  const file = await attachments.upload({ name: 'shared.txt', mimeType: 'text/plain', bytes: Buffer.from('Original attachment') })
+  const content: RichDoc = { type: 'doc', content: [{ type: 'attachment', attrs: { attachmentId: file.id, caption: file.name } }] }
+  const verify = (doc: RichDoc) => attachments.assertReferences([...documentAttachmentIds(doc)])
+  const human = await notes.createNote({ title: 'Restore this note', content }, 'user', verify)
+  const shared = await notes.createNote({ title: 'Remove this note', content }, 'user', verify)
+  const ai = await notes.updateNote(human.id, human.revision, { content: docFromText('AI replaced the attachment') }, 'agent', verify)
+  const trashed = await notes.deleteNote(shared.id, shared.revision)
+  const purged = await notes.purgeNotes([{ id: shared.id, revision: trashed.revision }], 'user', async ids => { await attachments.remove(ids) })
+  assert.deepEqual(purged.attachments, [], 'an active undo keeps the shared file even though neither current body references it')
+  assert.equal((await notes.readSnapshot()).snapshot!.agentEdits[human.id]!.undo, true)
+  const restored = await notes.revertAgentEdit(human.id, ai.revision, 'user', verify)
+  assert.deepEqual(restored.content, content, 'the original attachment and body can be restored')
+  assert.equal((await attachments.content(file.id)).bytes.toString(), 'Original attachment')
+  const removed = await notes.deleteNote(restored.id, restored.revision)
+  const last = await notes.purgeNotes([{ id: removed.id, revision: removed.revision }], 'user', async ids => { await attachments.remove(ids) })
+  assert.deepEqual(last.attachments, [file.id], 'the file is released once the final live reference is purged')
+})
+
+test('saved human revisions immediately remove ended AI copies, including folder and trash operations', async t => {
+  const { directory, store: notes } = await store(t)
+  const folder = await notes.createFolder('Old folder')
+  const first = await notes.createNote({ title: 'First', folderId: folder.id, content: docFromText('Private original') })
+  const second = await notes.createNote({ title: 'Second', folderId: folder.id })
+  const third = await notes.createNote({ title: 'Third' })
+  const ai1 = await notes.updateNote(first.id, first.revision, { appendText: 'AI' }, 'agent')
+  const ai2 = await notes.updateNote(second.id, second.revision, { appendText: 'AI' }, 'agent')
+  const ai3 = await notes.updateNote(third.id, third.revision, { appendText: 'AI' }, 'agent')
+  const files = () => readdir(join(directory, AGENT_UNDO_DIRECTORY))
+  assert.equal((await files()).length, 3)
+  await assert.rejects(notes.updateNote(first.id, first.revision, { title: 'Stale human edit' }), code('REVISION_CONFLICT'))
+  assert.equal((await files()).length, 3, 'a failed revision check does not remove any copy')
+  await notes.updateNote(first.id, ai1.revision, { title: 'Human edit' })
+  assert.deepEqual((await files()).sort(), [`${second.id}.json`, `${third.id}.json`].sort(), 'ordinary saves clean up immediately')
+  await notes.deleteFolder(folder.id)
+  assert.deepEqual(await files(), [`${third.id}.json`], 'folder deletion also ends the AI run of a note it changes')
+  assert.equal((await notes.getNote(second.id)).revision, ai2.revision + 1)
+  await notes.deleteNote(third.id, ai3.revision)
+  assert.deepEqual(await files(), [], 'moving to Trash leaves no unusable pre-AI body behind')
+})
+
+test('an ended AI copy does not keep an otherwise unused attachment alive', async t => {
+  const { directory, store: notes } = await store(t)
+  const attachments = new AttachmentStore({ directory })
+  const file = await attachments.upload({ name: 'ended.txt', bytes: Buffer.from('Ended AI run'), mimeType: 'text/plain' })
+  const content: RichDoc = { type: 'doc', content: [{ type: 'attachment', attrs: { attachmentId: file.id, caption: file.name } }] }
+  const verify = (doc: RichDoc) => attachments.assertReferences([...documentAttachmentIds(doc)])
+  const original = await notes.createNote({ content }, 'user', verify)
+  const shared = await notes.createNote({ content }, 'user', verify)
+  const ai = await notes.updateNote(original.id, original.revision, { content: docFromText('AI replacement') }, 'agent', verify)
+  await notes.updateNote(original.id, ai.revision, { appendText: 'Human revision' }, 'user', verify)
+  const trash = await notes.deleteNote(shared.id, shared.revision)
+  const purged = await notes.purgeNotes([{ id: trash.id, revision: trash.revision }], 'user', async ids => { await attachments.remove(ids) })
+  assert.deepEqual(purged.attachments, [file.id], 'an obsolete undo must not retain an unused file')
+  assert.deepEqual(await readdir(join(directory, AGENT_UNDO_DIRECTORY)), [])
+})
+
+test('a concurrent human save and AI undo serialize against the same expected revision', async t => {
+  const { directory, store: notes } = await store(t)
+  const other = new JotStore({ directory })
+  const human = await notes.createNote({ title: 'Before', content: docFromText('Human body') })
+  const ai = await notes.updateNote(human.id, human.revision, { appendText: 'AI body' }, 'agent')
+  const results = await Promise.allSettled([
+    notes.revertAgentEdit(ai.id, ai.revision),
+    other.updateNote(ai.id, ai.revision, { title: 'Concurrent human edit' }),
+  ])
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+  const refused = results.find(result => result.status === 'rejected') as PromiseRejectedResult
+  assert.ok(code('REVISION_CONFLICT')(refused.reason), 'the losing writer gets an explicit conflict')
+  assert.equal((await notes.getNote(ai.id)).revision, ai.revision + 1)
+  assert.deepEqual(await readdir(join(directory, AGENT_UNDO_DIRECTORY)), [], 'the winning human revision ends the AI run')
+})
+
+test('a failed human persistence leaves the current AI version and its undo intact', async t => {
+  const { directory, store: notes } = await store(t)
+  const human = await notes.createNote({ title: 'Before', content: docFromText('Human body') })
+  const ai = await notes.updateNote(human.id, human.revision, { appendText: 'AI body' }, 'agent')
+  const path = join(directory, AGENT_UNDO_DIRECTORY, `${human.id}.json`)
+  const before = await readFile(path, 'utf8')
+  // An unwritable backup target fails before the state rename, after the operation ran.
+  await rm(join(directory, BACKUP_FILENAME))
+  await mkdir(join(directory, BACKUP_FILENAME))
+  await assert.rejects(notes.updateNote(ai.id, ai.revision, { title: 'Not saved' }), code('PERSISTENCE_ERROR'))
+  assert.equal((await notes.getNote(ai.id)).revision, ai.revision)
+  assert.equal(await readFile(path, 'utf8'), before, 'cleanup happens only after a successful save')
+  await rm(join(directory, BACKUP_FILENAME), { recursive: true })
+  const restored = await notes.revertAgentEdit(ai.id, ai.revision)
+  assert.deepEqual(restored.content, human.content)
 })
 
 test('HTTP undo is POST-only, human-only and returns the restored note', async t => {

@@ -2,7 +2,29 @@
 
 Dates: 2026-10-02 through 2026-10-05 (Asia/Shanghai). Each section applies only to the version it names.
 
-## 0.2.6 development — official `/jot` client action
+## 0.2.6 — insert menu, library export and AI undo
+
+Verified 2026-10-05. The reviewed PR initially passed 295 tests. Review reproductions then found unsafe attachment cleanup for an active AI undo, stale undo copies after human edits, library export continuing after failed saves, archive allocation before its limit, and an AI-undo response replacing newer writing. Those cases were repaired. A real language switch also exposed stale checkbox labels in retained NodeViews; the final Client refreshes only their labels. Final `pnpm check` passed **307 tests**, typecheck and builds, followed by prepack and package-export checks. Independent review reran 21 backend/client export and undo tests; the label change also passed 27 focused editor/draft checks.
+
+Both isolated profiles installed hash-named candidates through the official CLIs. The final Host SHA-256 is `934491ce5109743e762f70e5f4a0f3fb0203cfe9d9dd5669aca01559192f5371`; the final Client is `c598ddbc00441ab5e503c74a7e5a3b7edc803c23a946ff534dd209e2e52707b4`. The preceding UI candidate used the same Host and Client `f5590913e1c9587af8015b40d259d50b5957a4606203aaef5baa3f8265ebbef7`; its only later Client change refreshes retained checkbox language labels without a document transaction.
+
+### Actual official Host checks
+
+- **DSH 0.2.1-alpha.1 Web:** `/jot` displayed its default Open action, pinned/recent notes and a title filter. Two Enter presses opened Jot; selecting a specific note opened it in the current conversation and preserved the other draft text. The existing public conversation and token usage stayed unchanged.
+- In the actual editor, Mod+Enter changed one to-do, Alt+Shift+Down moved that item within its list, and Save persisted progress **1/3 → 2/3** and the changed order. The Chinese `、bt` filter offered headings 1–3; keyboard selection inserted H2. Mod+Alt+4 left that H2 unchanged. The `?` shortcut and menu both opened the keyboard reference in Web.
+- Word, PDF and Markdown folder exports all downloaded through the Web UI. Their real ZIPs each held one note and one public TXT attachment; the Word document contained the latest text, the PDF had a valid header, and Markdown's relative, URL-encoded attachment link resolved to the included original. The automation's browser download-event waiter timed out, but all three files were independently found and inspected in the normal Downloads folder.
+- Batch Trash moved two public notes without a confirmation and offered Undo; one click restored both. A search with no results in the selected folder named two matches elsewhere; switching to all folders retained the query and returned those two results.
+- A real Host split-resize reduced the Jot pane to **320.5px**. Table and body left edges were both **973.5px**, with a **14px** control band. The first-column menu stayed inside the 1280px viewport; the pane width was restored afterwards.
+- **DSH 0.2.0-rc.2 macOS Desktop:** `/jot` opened the same picker, its default Open action and a filtered note. Native Mod+Enter and Alt+Shift+Down persisted **1/3 → 2/3** and the reordered item. `/bt`, Down and Enter inserted H2, and native Save retained it. The keyboard-reference menu rendered the expected platform keys; direct native `?` triggering was not separately confirmed.
+- Both Hosts confirmed Undo AI edits with AI access off: the appended public follow-up disappeared, the note became a new human revision and the undo sidecar was removed. The final Web Client then checked English → Chinese → English on a retained checklist; labels followed the locale, and persisted content, revisions and timestamps did not change.
+
+Public fixture updates used direct calls to real Jot tools, with their gate turned on only for those fixture writes and turned off afterwards; this does not mean a model called the tools. No new model request was used for this version's acceptance. Original Desktop notes/attachments remained byte-for-byte unchanged, and its test directory override is restored after QA. The ordinary DSH Home and installed App were not replaced.
+
+All four Chinese/English README images are retaken in the official Web Host, at its ordinary **1280×720 JPEG** viewport. Workbench images show the corresponding public checklist/table and filtered insert menu; sidebar images show corresponding real public dialogues and an undoable AI-edited note. No credentials, accounts, private note text or local filesystem paths appear. See [README-DESIGN.md](README-DESIGN.md) for provenance.
+
+Actual Windows/Linux native UI, complete IME coverage and every shortcut in every focus state remain unverified. The final Desktop language flip was not confirmed: its language dropdown could not be selected through the current automation, and screen capture still returned a Stage Manager thumbnail. The final Web locale round trip and initial native localized labels were observed; that limitation does not attest to a successful Desktop locale flip. Previous versions' table/history/attachment checks below are distinct from this acceptance. CI, merge, Release and npm/registry byte comparison are checked separately.
+
+## Historical 0.2.6 development — official `/jot` client action
 
 Verified 2026-10-05. `pnpm check` passed all **269 tests**, typecheck and Host/Client build; prepack and package-export checks passed. An independent review repeated 21 slash/entry tests and found no confirmed blocker. The optional Cordis injection was exercised with the real registry for service arrival, replacement and unload; regressions also cover stale sessions, visible modal guards, duplicate client contributions and preservation of the existing entries.
 

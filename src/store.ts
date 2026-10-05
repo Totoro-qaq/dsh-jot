@@ -216,10 +216,18 @@ export class JotStore {
     try {
       const { state, previous } = await this.load(!mutate)
       if (actor === 'agent' && !state.agentEnabled) throw new StoreError('AGENT_DISABLED', 'Agent access to notes is disabled')
+      // Compare the saved human revisions, including operations such as deleting
+      // a folder that can change several notes without returning one note.
+      const previousRevisions = actor === 'user' && mutate ? new Map(state.notes.map(note => [note.id, note.revision])) : undefined
       const result = await operation(state)
       if (mutate) {
         await this.persist(state, previous)
         if (actor === 'agent') await this.recordAgentEdit(result, state, hooks.undo?.())
+        if (previousRevisions) {
+          const revisions = new Map(state.notes.map(note => [note.id, note.revision]))
+          await Promise.all([...previousRevisions].filter(([id, revision]) => revisions.get(id) !== revision)
+            .map(([id]) => rm(this.undoPath(id), { force: true }).catch(() => {})))
+        }
         await hooks.saved?.().catch(() => {})
       }
       return structuredClone(result)
@@ -262,6 +270,7 @@ export class JotStore {
         else if (entry.undo && id !== changed.id) stale.push(id)
       }
       const undo = before ? await this.recordAgentUndo(changed.id, changed.revision, before) : false
+      if (!before) await rm(this.undoPath(changed.id), { force: true }).catch(() => {})
       notes[changed.id] = { revision: changed.revision, at: timestamp(), ...undo ? { undo: true } : {} }
       const temporary = join(this.directory, `.jot-activity-${process.pid}-${randomUUID()}.tmp`)
       try {
@@ -496,6 +505,13 @@ export class JotStore {
       const ids = new Set(removed.map(note => note.id))
       state.notes = state.notes.filter(note => !ids.has(note.id))
       const kept = new Set(state.notes.flatMap(note => [...documentAttachmentIds(note.content)]))
+      // An active AI undo is another live reference. Deleting a different note
+      // must not delete a file needed to restore the user's pre-AI version.
+      const { edits } = await this.readActivity()
+      for (const note of state.notes) if (note.deletedAt === null && edits[note.id]?.revision === note.revision) {
+        const undo = await this.readUndo(note.id)
+        if (undo?.revision === note.revision) for (const id of documentAttachmentIds(undo.before.content)) kept.add(id)
+      }
       const orphaned = [...new Set(removed.flatMap(note => [...documentAttachmentIds(note.content)]))].filter(id => !kept.has(id))
       await this.persist(state, previous)
       await Promise.all([...ids].map(id => rm(this.undoPath(id), { force: true }).catch(() => {})))

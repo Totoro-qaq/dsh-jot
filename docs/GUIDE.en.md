@@ -2,7 +2,7 @@
 
 [Back to README](../README.en.md) · [中文指南](GUIDE.zh-CN.md) · [Changelog](../CHANGELOG.md) · [Validation](VALIDATION.md)
 
-Jot is a human-owned notes and lightweight-document workbench for DSH. Write paragraphs, lists and to-dos directly, and let an agent help maintain them when you choose. Version 0.2.5 is compatible with **DeepSeek Harness 0.2.0-rc.2 and 0.2.1-alpha.1**, using each platform's macOS, Windows or Linux keyboard conventions. See the [validation record](VALIDATION.md) for the actual Web, native Desktop and operating-system checks.
+Jot is a human-owned notes and lightweight-document workbench for DSH. Write paragraphs, lists and to-dos directly, and let an agent help maintain them when you choose. Version 0.2.6 is compatible with **DeepSeek Harness 0.2.0-rc.2 and 0.2.1-alpha.1**, using each platform's macOS, Windows or Linux keyboard conventions. See the [validation record](VALIDATION.md) for the actual Web, native Desktop and operating-system checks.
 
 ## Interface
 
@@ -10,7 +10,7 @@ Jot is a human-owned notes and lightweight-document workbench for DSH. Write par
 
 - **Jot** in the left navigation opens the full workbench without selecting a conversation. The workbench reopens the note you were last reading.
 - During a conversation, choose **Jot** in the official right sidebar's new-tab guide. The compact tab switches between the list and a note and adds nothing to the chat composer.
-- The development build adds `/jot`: type it in the chat composer and press Enter, or choose **Open Jot** from the slash menu, to open a picker. **Open Jot** is preselected, so pressing Enter again opens the right-sidebar tab; you can also choose **New note**, or type to find a pinned or recent note and open it directly. Choosing consumes the `/jot` token and preserves other draft text and attachments; Escape closes the picker and leaves `/jot` in the composer.
+- Type `/jot` in the chat composer and press Enter, or choose **Open Jot** from the slash menu, to open a picker. **Open Jot** is preselected, so pressing Enter again opens the right-sidebar tab; you can also choose **New note**, or type to find a pinned or recent note and open it directly. Choosing consumes the `/jot` token and preserves other draft text and attachments; Escape closes the picker and leaves `/jot` in the composer.
 - **Open full notes** in the compact tab carries the current note and any unsaved draft into the workbench.
 
 ### Note list
@@ -146,7 +146,7 @@ Single-note exports use the current draft; saving first is not required. Each ex
 
 ### Exporting many notes
 
-**Sort and options → Export all notes…** packages notes into one ZIP. With a folder or **Unfiled** selected, the item reads **Export these notes…** and exports only the current filter. Notes in Trash are never exported. Choose a format:
+**Sort and options → Export all notes…** packages notes into one ZIP. With a folder or **Unfiled** selected, the item reads **Export these notes…** and exports only that folder scope. Search words do not limit the export, and notes in Trash are never exported. Choose a format:
 
 | Format | Best for |
 | --- | --- |
@@ -156,7 +156,7 @@ Single-note exports use the current draft; saving first is not required. Each ex
 
 The ZIP holds one file per note in a directory per folder, with unfiled notes at the top level. Notes with the same name get “(2)” and so on; untitled notes are named after their first line. Every referenced file is included once, as the original, in `attachments/` (`附件/` in the Chinese interface), so GIF, WebP and other files that Word or PDF cannot embed are kept. The note you are editing is saved before exporting.
 
-One export holds at most 2,000 notes, or 500 as PDF because each PDF embeds its own Chinese font. Attachments and the final file are each limited to 200 MiB. For more, export one folder at a time or choose Word.
+One export holds at most 2,000 notes, or 500 as PDF because each PDF embeds its own Chinese font. Attachment bytes, the accumulated generated-entry budget (including ZIP overhead), and the final file are each limited to 200 MiB. For more, export one folder at a time or choose Word.
 
 ## Working with an agent
 
@@ -176,7 +176,7 @@ One export holds at most 2,000 notes, or 500 as PDF because each PDF embeds its 
 - Replacing the whole text is refused when the note has tables, images, files, colors or underline, so they are not flattened. The agent may retry with `allowFormattingLoss: true` only after you agree.
 - Updates, ticks and deletions require the exact `revision`, so other edits are never overwritten. Every call checks the current switch; the agent cannot turn its own access on.
 - Versions saved by AI are labelled **AI edited** in the list and the editor toolbar until you edit the note. The label is recorded separately in `jot.activity.json`, so older plugin versions still read the notes unchanged.
-- Select **AI edited** in the editor toolbar, or choose **Undo AI edits…** under **More note actions**, and confirm to return the note to how it was before AI edited it, saved as a new version of yours. Consecutive AI edits count as one run and are undone together; if you edited in between, only the latest run is undone. Only you can undo, including after turning AI collaboration off, and the AI version is not kept.
+- For an existing note with a version from before AI edits, select **AI edited** in the editor toolbar, or choose **Undo AI edits…** under **More note actions**, and confirm to restore it as a new version of yours. Consecutive AI edits count as one run and are undone together; if you edited in between, only the latest run is undone. Only you can undo, including after turning AI collaboration off. Without an earlier version, such as for an AI-created note, only the label is shown. There is no separate AI-edit history or Redo AI edits; the regular backup may still hold the previous state.
 - The version from before AI edits lives in `jot.agent-undo/`, at most one per note, and is removed when you edit, undo or permanently delete the note.
 - With AI collaboration on, notes without an **AI edited** label show a small icon in the editor toolbar as a reminder that AI can read and edit notes when you ask.
 

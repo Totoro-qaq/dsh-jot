@@ -8,7 +8,7 @@ product
 
 web
 
-Shared DSH Web UI and official Desktop, compatible with DSH 0.2.0-rc.2 and 0.2.1-alpha.1. Version 0.2.5 uses the current public shortcut APIs; the actual alpha.1 Web checks and separate rc.2 Desktop results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
+Shared DSH Web UI and official Desktop, compatible with DSH 0.2.0-rc.2 and 0.2.1-alpha.1. Version 0.2.6 uses the current public command and shortcut APIs; the actual alpha.1 Web checks and separate rc.2 Desktop results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 Target macOS, Windows and Linux, with separate shortcut and window-chrome validation for Desktop and Web. The shared renderer is not proof of identical native behavior. Actual Host checks are recorded per version in [docs/VALIDATION.md](docs/VALIDATION.md); Windows/Linux runtime acceptance remains pending.
 
@@ -101,7 +101,7 @@ Palette colors are stored as a finite set of hex values; dark themes remap them 
 - [x] AI 写入的文字按简单 Markdown 转换为标题、列表、待办、引用、代码、表格和行内格式；追加的列表并入末尾同类列表。
 - [x] 整篇替换在笔记含表格、图片、附件、颜色或下划线时拒绝执行，除非用户同意后显式允许。
 - [x] AI 保存的版本在列表和正文标出「AI 修改」，用户编辑后消失；归属记录独立存放。
-- [x] 一键撤销 AI 的修改：恢复到最近一轮 AI 修改前的版本，作为新的人工版本保存；只有用户能撤销，修改前的版本独立存放在 `jot.agent-undo/`。
+- [x] 一键撤销 AI 对已有笔记的修改：有修改前版本时恢复最近一轮修改前的状态，作为新的人工版本保存；只有用户能撤销，修改前的版本独立存放在 `jot.agent-undo/`。AI 新建笔记只显示标记。
 - [x] AI 协作开启时，正文工具栏显示提醒图标。
 
 ### 快捷键与宿主集成
@@ -110,7 +110,7 @@ Palette colors are stored as a finite set of hex values; dark themes remap them 
 - [x] Mac／Windows Desktop 正文聚焦时，通过 DSH 公开 fixed-shortcut 协议暂时保留 Mod+B；退出正文或卸载恢复，不修改用户持久设置。
 - [x] Mac Desktop 的 Cmd+Z／Cmd+Shift+Z 使用正文焦点期限内的公开命令路由。
 - [x] 「打开随记」「新建笔记」「摘录选中的文字」通过当前公开接口注册为 DSH 键盘命令，可在宿主设置中查找和绑定；默认不绑定按键，由用户自行设置。对话可见时使用右侧栏，否则打开工作台；对话框打开时不在背景执行。
-- [x] 开发版 `/jot` 通过官方斜杠菜单弹出选择列表：默认「打开随记」，也可新建笔记或直接打开置顶／最近的笔记；指令片段由宿主消费，保留其他草稿文字和附件。
+- [x] `/jot` 通过官方斜杠菜单弹出选择列表：默认「打开随记」，也可新建笔记或直接打开置顶／最近的笔记；指令片段由宿主消费，保留其他草稿文字和附件。
 - [x] `?` 或「排序与选项 → 键盘快捷键」显示全部按键说明，以及三条 DSH 命令的绑定位置。
 - [x] 对话框和菜单通过 Portal 避免侧栏裁剪，处理键盘导航、焦点恢复和视口内定位。
 
@@ -121,7 +121,7 @@ Palette colors are stored as a finite set of hex values; dark themes remap them 
 - 图片预览支持按字节识别的 PNG／JPEG／GIF／WebP，最多 10,000 像素边长及 4,000 万像素；PDF 预览依赖宿主／浏览器查看器。附件正文不做全文解析、OCR 或搜索索引。
 - 摘录保存文字及用户填写的来源。Desktop 的非 HTTP 页面不会自动提供原消息永久链接；未接入聊天消息的专用保存菜单或自动提炼任务。
 - 复制笔记复制文档结构并保留附件 ID，不复制一套附件二进制。批量管理逐条执行版本检查，发生失败时保留已成功结果，不是整批事务。
-- 导出当前草稿最多使用 100 个不同附件；附件原始字节和最终文件各上限 50 MiB。整库导出一次最多 2,000 篇（PDF 500 篇），附件合计和最终文件各上限 200 MiB，在主机内存中生成。PDF 超过 8 列的表格改为带行列标识的文字；合并边框不完全还原。PDF／DOCX 嵌入 PNG／JPEG，其他图片和普通文件保留名称说明。文档导出不承诺编辑器的逐像素复现。
+- 导出当前草稿最多使用 100 个不同附件；附件原始字节和最终文件各上限 50 MiB。整库导出一次最多 2,000 篇（PDF 500 篇），附件合计、生成条目累计预算（含 ZIP 开销）和最终文件各上限 200 MiB，在主机内存中生成。PDF 超过 8 列的表格改为带行列标识的文字；合并边框不完全还原。PDF／DOCX 嵌入 PNG／JPEG，其他图片和普通文件保留名称说明。文档导出不承诺编辑器的逐像素复现。
 - 界面每 3 秒检查更新，无变化时服务端返回「未修改」；仍然一次读取整个笔记库，不是分页加载。
 - 排序选择、列表宽度和隐藏状态是本机界面偏好；不声明云同步、后台任务、任意色值、字体选择器或每篇笔记的独立 AI 权限。
 

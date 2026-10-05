@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Editor, type JSONContent } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
-import { createJotExtensions, taskCheckboxLabel } from '../src/client/editor-extensions.js'
+import { createJotExtensions, refreshTaskCheckboxLabels, taskCheckboxLabel } from '../src/client/editor-extensions.js'
 import { moveListItem, toggleTaskAtSelection } from '../src/client/list-commands.js'
 import { validateRichDoc } from '../src/model.js'
 
@@ -59,6 +59,55 @@ test('to-do checkbox labels name the item in the interface language', t => {
   assert.equal(option.a11y.checkboxLabel(node, false), '待办：整理目标')
   locale = 'en'
   assert.equal(option.a11y.checkboxLabel(node, true), 'To-do: 整理目标')
+})
+
+test('retained checkbox NodeViews refresh their locale without changing content, selection or history', t => {
+  const editor = create([{ type: 'taskList', content: [
+    task('Review', true, { type: 'taskList', content: [task('Nested'), task('')] }),
+    task(''),
+  ] }])
+  t.after(() => editor.destroy())
+  caret(editor, 'Nested')
+  const original = editor.getJSON()
+  const selection = editor.state.selection.toJSON()
+  const state = editor.state
+  let transactions = 0
+  editor.on('transaction', () => { transactions++ })
+  // The actual schema supplies positions/text; this tiny DOM fixture retains
+  // the same NodeViews and exposes only their own checkbox and hidden label.
+  const views = new Map<number, {
+    nodeType: number
+    input: { attributes: Map<string, string>; setAttribute(name: string, value: string): void }
+    hidden: { textContent: string; ariaHidden: string }
+    querySelector(selector: string): unknown
+  }>()
+  const texts: string[] = []
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'taskItem') return
+    texts.push(node.textContent)
+    const attributes = new Map<string, string>()
+    const input = { attributes, setAttribute: (name: string, value: string) => { attributes.set(name, value) } }
+    const hidden = { textContent: '', ariaHidden: 'true' }
+    views.set(position, { nodeType: 1, input, hidden, querySelector: selector => {
+      if (selector === ':scope > label > input[type="checkbox"]') return input
+      if (selector === ':scope > label > span') return hidden
+      assert.fail(`unexpected selector: ${selector}`)
+    } })
+  })
+  const retained = [...views.values()]
+  const surface = { state: editor.state, view: { nodeDOM: (position: number) => views.get(position) ?? null } } as unknown as Pick<Editor, 'state' | 'view'>
+  refreshTaskCheckboxLabels(surface, 'zh')
+  assert.deepEqual(retained.map(view => view.input.attributes.get('aria-label')), texts.map(text => taskCheckboxLabel(text, 'zh')))
+  refreshTaskCheckboxLabels(surface, 'en')
+  const expected = texts.map(text => taskCheckboxLabel(text, 'en'))
+  assert.deepEqual(retained.map(view => view.input.attributes.get('aria-label')), expected)
+  assert.deepEqual(retained.map(view => view.hidden.textContent), expected)
+  assert.ok(retained.every(view => view.hidden.ariaHidden === 'true'))
+  assert.deepEqual([...views.values()], retained, 'the original NodeViews remain mounted')
+  assert.equal(editor.state, state, 'no transaction or history entry is created')
+  assert.deepEqual(editor.getJSON(), original)
+  assert.deepEqual(editor.state.selection.toJSON(), selection)
+  assert.equal(transactions, 0)
 })
 
 test('heading keys stop at level 3 while stored H4–H6 still render and persist', t => {

@@ -18,13 +18,13 @@
 
 ![Jot full workbench in the actual DSH Host, showing notes, checklists, tables, colors and highlights in English](./assets/readme/workbench-en.jpg)
 
-> **New in the 0.2.6 development build:** type `/` on an empty line to insert headings, checklists and tables; type `/jot` in the chat composer to find a note; export every note to Word, PDF or Markdown; undo AI edits in one step. The badge above shows the current npm release; see the [changelog](./CHANGELOG.md) for details.
+> **New in 0.2.6:** type `/` on an empty line to insert headings, checklists and tables; type `/jot` in the chat composer to find a note; export every note to Word, PDF or Markdown; undo AI changes to existing notes in one step. See the [changelog](./CHANGELOG.md) for details.
 
 ## Why Jot
 
 | Right beside the conversation | You write, AI helps | Your data stays yours |
 | --- | --- | --- |
-| Open the full workbench from the left navigation, or write in the right sidebar while you chat. `/jot` finds a note from the composer. | AI collaboration starts off. When on, AI reads or edits only when you ask; notes it changed are labelled **AI edited** and can be undone in one step. | Notes live in your local DSH data folder with no cloud sync. Export everything to Word, PDF or Markdown at any time. |
+| Open the full workbench from the left navigation, or write in the right sidebar while you chat. `/jot` finds a note from the composer. | AI collaboration starts off. When on, AI reads or edits only when you ask; changed notes are labelled **AI edited** and can be reverted when an earlier version exists. | Notes live in your local DSH data folder with no cloud sync. Export everything to Word, PDF or Markdown at any time. |
 
 ## Install
 
@@ -60,7 +60,7 @@ Restart DSH and **Jot** appears in the left navigation; press **New** to start w
 **Nothing gets lost**
 
 - Autosave, recovery drafts, and conflicts that keep your writing. Deleting notes, one or many at a time, can be undone; permanent deletion asks first.
-- Export a note to Word, PDF, Markdown or TXT, or package every note or one folder into a single ZIP with images embedded in Word and PDF.
+- Export a note to Word, PDF, Markdown or TXT, or package every note or one folder into a single ZIP with PNG/JPEG images embedded in Word and PDF.
 
 ![Jot compact right-sidebar tab beside a conversation in the actual DSH Host, showing the English interface](./assets/readme/sidebar-en.jpg)
 
@@ -74,7 +74,7 @@ Turn on **Allow AI collaboration** at the bottom of the list, then tell the AI w
 
 - AI can search, read, create and append to notes, tick a single to-do, or move a note to Trash. Every call checks the switch, and AI cannot turn it on.
 - Replacing a whole note refuses to drop tables, files or colors unless you agree.
-- Notes changed by AI are labelled **AI edited**. Select the label to undo, returning the note to how it was before AI edited it; consecutive AI edits are undone together.
+- Notes changed by AI are labelled **AI edited**. When an existing note has a version from before AI edits, select the label to restore it; consecutive AI edits are undone together. Notes created by AI show the label without this undo action.
 - Notes are never added to each conversation turn automatically; AI reads them only through its tools.
 
 See the [guide](./docs/GUIDE.en.md#working-with-an-agent) for the tools and the Markdown they accept.
