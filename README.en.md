@@ -18,7 +18,7 @@
 
 ![Jot full workbench in the actual DSH Host, showing notes, checklists, tables, colors and highlights in English](./assets/readme/workbench-en.jpg)
 
-> **In development (not yet released):** import Markdown files, whole folders or a ZIP exported from Jot; when AI changes a few words it changes only those words, keeping formatting; text AI adds to the end while you are writing joins your draft when it can be merged safely. Released changes are in the [changelog](./CHANGELOG.md).
+> **New in 0.2.7:** import Markdown files, whole folders or a ZIP exported from Jot; when AI changes a few words it changes only those words, keeping formatting; text AI adds to the end while you are writing joins your draft when it can be merged safely. Released changes are in the [changelog](./CHANGELOG.md).
 
 ## Why Jot
 
