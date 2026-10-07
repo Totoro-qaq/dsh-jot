@@ -1,62 +1,62 @@
-<p align="center"><img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/assets/readme/jot-icon.svg" width="56" height="56" alt="Jot"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/assets/readme/jot-icon.svg" width="64" height="64" alt=""></p>
 
 <h1 align="center">Jot</h1>
 
-<p align="center"><strong>A notebook beside your conversation.</strong><br>Notes for DeepSeek Harness. Write, check things off, or ask AI to save what you just agreed on.</p>
+<p align="center"><strong>A notebook beside your conversation.</strong><br>Take notes while you chat in DeepSeek Harness, and let AI write down what you decided.</p>
 
-<p align="center"><a href="#get-started">Install</a> · <a href="./docs/GUIDE.en.md">User guide</a> · <a href="./README.md">简体中文</a></p>
+<p align="center"><a href="#install">Install</a> · <a href="./docs/GUIDE.en.md">Guide</a> · <a href="./CHANGELOG.md">Changelog</a> · <a href="./README.md">简体中文</a></p>
 
-![In a real DSH conversation, AI adds the agreed tasks to Weekly sync; the note shows AI edited, and a person checks off one task](https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/jot-demo-en.gif)
+![In a DSH conversation, AI adds the three agreed tasks to the note Weekly sync; the note shows AI edited, and one task is checked off](https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/jot-demo-en.gif)
 
-<sub>Recorded in DSH, with generation waits accelerated. People and plans are fictional.</sub>
+## What it does
 
-## Leave the meeting with the next steps already written
+- **Notes beside the chat**: Jot opens to the right of the conversation. Type `/jot` to open, create or find a note, or open the full page from the left navigation for longer writing.
+- **Write like a document**: headings, checklists, tables, images and attachments, with no Markdown required. Type `/` on an empty line to insert anything, and press `?` for every shortcut.
+- **Help from AI**: once you turn on AI collaboration, AI can find, create and edit notes. Its changes are marked, and you can take them back.
+- **Easy to find**: search titles and text, pin what you use often, sort notes into folders, and see checklist progress right in the list.
+- **Import and export**: bring in Markdown notes from Obsidian and similar apps. Export your whole library to Word, PDF or Markdown, and import the ZIP back exactly as it was.
+- **Stays on your computer**: notes live in DSH's data folder, never in the cloud, and uninstalling Jot keeps them.
 
-Maya has the designs on Thursday, Leo finishes integration on Friday, and Nina tests on Sunday. Say “Add those three to-dos to Weekly sync in Jot, with the owners and dates.” Then read, edit, and check them off right beside the conversation.
+## Working with AI
 
-You can also write on your own, add tables, images, and attachments, or search the title and body of an older note. Use folders if they help; name them your way.
+AI collaboration is off until you turn it on at the bottom of the note list. Then just ask in the conversation:
 
-## Let AI help. Keep the final say.
+> Add those three to-dos to Weekly sync in Jot, with owners and dates.
+>
+> Check off the first to-do in Weekly sync.
 
-AI collaboration starts off. Turn it on when you want help. When AI changes an existing note, the “AI edited” mark lets you undo that round of changes and carry on writing yourself.
+AI changes only what it needs to: change a few words and only those words change, while your headings, lists and colors stay as they were. When AI changes an existing note, the note is marked **AI edited**; select the mark to undo that round of changes.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/undo-en-dark.png">
-  <img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/undo-en-light.png" width="600" alt="Selecting AI edited opens the confirmation to undo the latest round of AI changes to Weekly sync">
-</picture>
+While collaboration is off, Jot's tools are not offered to the conversation at all. When it is on, AI reads notes only when you ask.
 
-## Bring your notes in. Take the finished work with you.
-
-Import an Obsidian Markdown vault, a folder, or a few TXT files, together with the images and attachments your notes reference. After the meeting, export Word or PDF for a colleague, Markdown or TXT for another app, or a restorable ZIP of your whole library.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/transfer-en-dark.png">
-  <img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/transfer-en-light.png" width="1100" alt="The library menu offers Import notes and Export these notes next to the completed meeting note">
-</picture>
-
-## Get started
+## Install
 
 ```sh
 # Desktop app
 dsh plugin --profile desktop add dsh-jot
 
-# Web UI
+# DSH Web
 dsh plugin --profile web add dsh-jot
 ```
 
-Restart DSH and open **Jot** in the left navigation. In a conversation, type `/jot` to open, create, or find a note in the right sidebar.
+Restart DSH and **Jot** appears in the left navigation. Desktop and Web are installed separately. If you don't have the `dsh` command yet, install it from **Manage dsh commands…** in the official desktop app's menu; it needs Node.js `^22.19.0 || >=24`.
 
-Install separately for Desktop and Web. The official desktop app can enable its bundled CLI through **Manage dsh Command…**. The CLI requires Node.js `^22.19.0 || >=24`. See the [guide](./docs/GUIDE.en.md#install-upgrade-and-remove) for updates, removal, and source builds.
+Upgrading, removing and backing up are covered in the [guide](./docs/GUIDE.en.md#install-upgrade-and-remove).
 
-<details>
-<summary>Compatibility and your data</summary>
+## FAQ
 
-Supports DSH 0.2.0-rc.2 and 0.2.1-alpha.1. Verified in the official macOS Desktop app and DSH Web; Windows and Linux pass source checks in CI, but their native UI and shortcuts have not been tested on those systems. See the [validation record](./docs/VALIDATION.md) for version-specific coverage.
+**Where are my notes?** In `~/.dsh/jot`, or in `$DSH_HOME/jot` when `DSH_HOME` is set. Desktop and Web share notes when they point to the same folder.
 
-Notes live in DSH's local data directory, separately from the plugin package, and remain after uninstalling. Content read by AI tools enters the current model conversation; writing notes does not require AI. There is no cloud sync, live multi-user editing, full version history, or drawing. The [guide](./docs/GUIDE.en.md) covers AI undo, attachment previews, import/export limits, and backups.
+**Will uninstalling or upgrading lose notes?** No. Notes are stored separately from the plugin.
 
-</details>
+**Can I move in from Obsidian?** Yes. Choose **Import notes** under **Sort and options** in the list and pick your vault folder; images and attachments come along.
 
-[Shortcuts](./docs/GUIDE.en.md#shortcuts) · [AI collaboration](./docs/GUIDE.en.md#working-with-an-agent) · [Data and backups](./docs/GUIDE.en.md#data-and-conflicts) · [Report an issue](https://github.com/Totoro-qaq/dsh-jot/issues)
+## Compatibility
 
-[Releases](https://github.com/Totoro-qaq/dsh-jot/releases) · [npm](https://www.npmjs.com/package/dsh-jot) · [MIT](./LICENSE) · [Font license](./assets/fonts/OFL.txt)
+Works with DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 (Web). Windows and Linux pass source checks but have not been tested on real machines; the [validation record](./docs/VALIDATION.md) lists what each release was tested on.
+
+---
+
+[Guide](./docs/GUIDE.en.md) · [Changelog](./CHANGELOG.md) · [Report an issue](https://github.com/Totoro-qaq/dsh-jot/issues) · [npm](https://www.npmjs.com/package/dsh-jot)
+
+[MIT](./LICENSE) · Fonts embedded in PDF exports use the [SIL Open Font License](./assets/fonts/OFL.txt)
