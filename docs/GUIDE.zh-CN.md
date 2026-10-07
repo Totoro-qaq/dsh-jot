@@ -2,7 +2,7 @@
 
 [返回首页](../README.md) · [English guide](GUIDE.en.md) · [更新记录](../CHANGELOG.md) · [验证记录](VALIDATION.md)
 
-随记是 DSH 中由人管理的笔记与轻文档工作台：直接写段落、列表和待办，按需要允许 agent 一起维护。0.2.6 兼容 **DeepSeek Harness 0.2.0-rc.2 与 0.2.1-alpha.1**，采用 macOS、Windows 和 Linux 各自的按键习惯；Web 与原生 Desktop、各系统的实际验收范围见[验证记录](VALIDATION.md)。
+随记是 DSH 中由人管理的笔记与轻文档工作台：直接写段落、列表和待办，按需要允许 agent 一起维护。当前版本兼容 **DeepSeek Harness 0.2.0-rc.2 与 0.2.1-alpha.1**，采用 macOS、Windows 和 Linux 各自的按键习惯；Web 与原生 Desktop、各系统的实际验收范围见[验证记录](VALIDATION.md)。
 
 ## 界面与操作
 
@@ -222,3 +222,7 @@ ZIP 里每篇笔记一个文件，按文件夹分目录，未分类的笔记放�
 ## License
 
 插件：MIT。随包字体：[SIL Open Font License 1.1](../assets/fonts/OFL.txt)。
+
+## 社区收录材料
+
+OMDSH 投稿信息与权限说明见[作者投稿声明](community/omdsh-intake.zh-CN.md)。材料是否已提交、平台是否完成审核，应以目录的实际状态为准；这份声明不代表收录通过。

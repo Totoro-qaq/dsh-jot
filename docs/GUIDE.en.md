@@ -2,7 +2,7 @@
 
 [Back to README](../README.en.md) · [中文指南](GUIDE.zh-CN.md) · [Changelog](../CHANGELOG.md) · [Validation](VALIDATION.md)
 
-Jot is a human-owned notes and lightweight-document workbench for DSH. Write paragraphs, lists and to-dos directly, and let an agent help maintain them when you choose. Version 0.2.6 is compatible with **DeepSeek Harness 0.2.0-rc.2 and 0.2.1-alpha.1**, using each platform's macOS, Windows or Linux keyboard conventions. See the [validation record](VALIDATION.md) for the actual Web, native Desktop and operating-system checks.
+Jot is a human-owned notes and lightweight-document workbench for DSH. Write paragraphs, lists and to-dos directly, and let an agent help maintain them when you choose. The current version is compatible with **DeepSeek Harness 0.2.0-rc.2 and 0.2.1-alpha.1**, using each platform's macOS, Windows or Linux keyboard conventions. See the [validation record](VALIDATION.md) for the actual Web, native Desktop and operating-system checks.
 
 ## Interface
 
@@ -222,3 +222,7 @@ Cloud sync, real-time collaboration, version history, free drawing/annotation an
 ## License
 
 Plugin: MIT. Bundled fonts: [SIL Open Font License 1.1](../assets/fonts/OFL.txt).
+
+## Community submission material
+
+See the [author submission statement](community/omdsh-intake.md) for OMDSH metadata and permission details. Submission and review status are determined by the directory itself; the statement is not a claim of acceptance.
