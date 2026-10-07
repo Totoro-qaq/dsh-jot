@@ -1,62 +1,62 @@
-<p align="center"><img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/assets/readme/jot-icon.svg" width="56" height="56" alt="Jot"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/assets/readme/jot-icon.svg" width="64" height="64" alt=""></p>
 
 <h1 align="center">随记 Jot</h1>
 
-<p align="center"><strong>对话旁边的笔记本。</strong><br>给 DeepSeek Harness 的笔记插件。自己写、随手勾，也能让 AI 把聊定的事记下来。</p>
+<p align="center"><strong>对话旁边的笔记本。</strong><br>在 DeepSeek Harness 里边聊边记，也能让 AI 把讨论结果记进笔记。</p>
 
-<p align="center"><a href="#开始使用">安装</a> · <a href="./docs/GUIDE.zh-CN.md">使用指南</a> · <a href="./README.en.md">English</a></p>
+<p align="center"><a href="#安装">安装</a> · <a href="./docs/GUIDE.zh-CN.md">使用指南</a> · <a href="./CHANGELOG.md">更新记录</a> · <a href="./README.en.md">English</a></p>
 
-![在真实 DSH 对话里请 AI 把周会分工记入随记，右侧出现三项待办和 AI 修改标记，再由人勾选一项](https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/jot-demo-zh.gif)
+![在 DSH 对话里让 AI 把周会分工记进随记：右侧笔记出现三条待办和「AI 修改」标记，随后勾掉一条](https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/jot-demo-zh.gif)
 
-<sub>真实 DSH 操作，生成等待已加速；演示中的人物与事项为虚构。</sub>
+## 能做什么
 
-## 周会聊完，分工已经在笔记里
+- **边聊边记**：随记就开在对话右侧，输入 `/jot` 可以打开、新建或找到一篇笔记；要写长一点的内容，从左侧导航进入完整页面。
+- **像文档一样写**：标题、清单、表格、图片和附件都有，不用会 Markdown。空行输入 `/` 插入内容，按 `?` 查看全部快捷键。
+- **让 AI 帮忙**：打开 AI 协作后，AI 可以查找、新建和修改笔记；它改过的地方会标出来，不满意可以撤回。
+- **找得到**：标题和正文都能搜。常用的置顶，按文件夹归类，清单在列表里直接显示完成进度。
+- **导入导出**：可以导入 Obsidian 等 Markdown 笔记；整个笔记库能导出成 Word、PDF 或 Markdown，导出的压缩包还能原样导回来。
+- **存在本机**：笔记保存在 DSH 的数据目录里，不上传云端，卸载插件也不会删除。
 
-林可周四交设计，陈默周五联调，许晨周日回归。聊定之后说一句「把刚才定的三件事记到随记『周会』，写上负责人」，右边就能接着看、改、勾选。
+## 和 AI 一起用
 
-平时也可以直接写笔记，插入表格、图片和附件；找旧内容时，搜标题或正文都行，文件夹按自己的习惯建。
+AI 协作默认关闭，在笔记列表底部打开。之后直接在对话里说：
 
-## AI 帮忙整理，你保留最后一笔
+> 把刚才定的三件事记到随记「周会」，写上负责人。
+>
+> 把「周会」里的第一条待办勾掉。
 
-「允许 AI 协作」默认关闭，需要它参与时再打开。AI 改过的已有笔记会标出「AI 修改」；不合意，点这个标记撤销这一轮改动，接着自己写。
+AI 只改需要改的地方：改几个字，就只换那几个字，原来的标题、列表和颜色都会保留。AI 改过的已有笔记会标上「AI 修改」，点一下就能撤回这一轮修改。
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/undo-zh-dark.png">
-  <img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/undo-zh-light.png" width="600" alt="点击周会笔记上的 AI 修改，确认撤销这一轮 AI 改动">
-</picture>
+协作关闭时，随记不会出现在对话可用的工具里；打开以后，AI 也只在你提出要求时才读笔记。
 
-## 旧笔记带进来，整理好了带出去
-
-旧笔记不用从头抄。选择 Obsidian 的 Markdown 笔记库、整个文件夹或一批 TXT 导入，笔记引用的图片和附件一起带上。周会后导出一份 Word 或 PDF 发给同事；也可以导出 Markdown、TXT，或把整个笔记库打包为可恢复的 ZIP。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/transfer-zh-dark.png">
-  <img src="https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/transfer-zh-light.png" width="1100" alt="随记的笔记库菜单同时提供导入笔记与导出这些笔记，旁边是完整的周会内容">
-</picture>
-
-## 开始使用
+## 安装
 
 ```sh
 # 桌面客户端
 dsh plugin --profile desktop add dsh-jot
 
-# Web UI
+# DSH Web
 dsh plugin --profile web add dsh-jot
 ```
 
-重启 DSH，点左侧「随记」开始写。聊天时输入 `/jot`，就能在右边打开、新建或找到一篇笔记。
+装好后重启 DSH，左侧导航会多出「随记」。桌面版和 Web 版需要分别安装。还没有 `dsh` 命令的话，可以在官方桌面应用的菜单「管理 dsh 命令…」里安装，需要 Node.js `^22.19.0 || >=24`。
 
-Desktop 和 Web 分别安装；官方桌面应用可在菜单「管理 dsh 命令…」中启用内置 CLI。CLI 需要 Node.js `^22.19.0 || >=24`。升级、卸载和源码构建见[使用指南](./docs/GUIDE.zh-CN.md#安装升级与卸载)。
+升级、卸载和备份的方法见[使用指南](./docs/GUIDE.zh-CN.md#安装升级与卸载)。
 
-<details>
-<summary>兼容性与数据</summary>
+## 常见问题
 
-支持 DSH 0.2.0-rc.2 与 0.2.1-alpha.1。已在官方 macOS Desktop 和 DSH Web 中验收；Windows／Linux 通过 CI 源码检查，原生界面与快捷键尚未实机验收。各版本的具体范围见[验证记录](./docs/VALIDATION.md)。
+**笔记存在哪里？** 默认在 `~/.dsh/jot`；设置了 `DSH_HOME` 时在 `$DSH_HOME/jot`。桌面版和 Web 版指向同一个目录时，笔记是共用的。
 
-笔记保存在 DSH 的本地数据目录，与插件包分开，卸载插件会保留笔记。AI 工具读取的内容会进入当前模型对话；不使用 AI 时也能正常写笔记。当前没有云同步、多人实时编辑、完整版本历史或绘图。AI 撤销、附件预览、导入导出和备份的具体范围见[使用指南](./docs/GUIDE.zh-CN.md)。
+**卸载或升级会丢笔记吗？** 不会，笔记和插件分开存放。
 
-</details>
+**能从 Obsidian 搬过来吗？** 能。在列表的「排序与选项」里选「导入笔记」，选中整个笔记库文件夹即可，图片和附件会一起导入。
 
-[快捷键](./docs/GUIDE.zh-CN.md#快捷键) · [AI 协作](./docs/GUIDE.zh-CN.md#agent-协作) · [数据与备份](./docs/GUIDE.zh-CN.md#数据与冲突) · [反馈问题](https://github.com/Totoro-qaq/dsh-jot/issues)
+## 兼容性
 
-[版本更新](https://github.com/Totoro-qaq/dsh-jot/releases) · [npm](https://www.npmjs.com/package/dsh-jot) · [MIT](./LICENSE) · [字体许可](./assets/fonts/OFL.txt)
+支持 DSH 0.2.0-rc.2（官方 macOS 桌面版）和 0.2.1-alpha.1（Web）。Windows 和 Linux 只做过源码检查，还没有在真机上验收；每个版本实际测过哪些内容，见[验证记录](./docs/VALIDATION.md)。
+
+---
+
+[使用指南](./docs/GUIDE.zh-CN.md) · [更新记录](./CHANGELOG.md) · [反馈问题](https://github.com/Totoro-qaq/dsh-jot/issues) · [npm](https://www.npmjs.com/package/dsh-jot)
+
+[MIT](./LICENSE) · PDF 导出内嵌的字体使用 [SIL Open Font License](./assets/fonts/OFL.txt)
