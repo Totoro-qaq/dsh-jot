@@ -27,7 +27,7 @@
 
 ### Verification
 
-Local `pnpm check` passed **344 tests**, typecheck and Host/Client builds; packaging checks passed. The import dialog, folder and backup imports, merging an append while typing, and change-only polling were checked in the local `pnpm dev` preview only, not yet in DSH Web or Desktop. Tool registration that follows the switch is covered by tests against a fake registry; whether DSH drops removed tools from an ongoing conversation still needs a real host.
+Local `pnpm check` passed **344 tests**, typecheck and Host/Client builds; packaging checks passed. Official **DSH 0.2.1-alpha.1 Web** and **0.2.0-rc.2 macOS Desktop** both passed exact 200 MiB UI uploads and same-turn tool removal: after switching collaboration off, stale tool calls were refused and the next model request carried no Jot tools. The model endpoint was a local deterministic fixture; the DSH agent loop and serialized requests were real. Desktop's native folder chooser imported two notes, their subfolder and a referenced ZIP, ignoring unused and hidden ZIPs. Precise edits, draft merging and change-only polling retain their unit/preview coverage; Windows/Linux native UI remains unverified. See the [validation record](./docs/VALIDATION.md) for the exact candidate and scope.
 
 ## 0.2.6 — 2026-10-05
 

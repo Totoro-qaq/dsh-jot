@@ -1,6 +1,24 @@
 # Validation — dsh-jot
 
-Dates: 2026-10-02 through 2026-10-05 (Asia/Shanghai). Each section applies only to the version it names.
+Dates: 2026-10-02 through 2026-10-07 (Asia/Shanghai). Each section applies only to the version it names.
+
+## Unreleased — live tool removal and import acceptance
+
+Verified 2026-10-07 against source commit `40f384154227978c14a28396b244c7a9bc25f742`, after the shared-draft and folder-ZIP fixes. The candidate still declares `0.2.6`; these development changes have not been published. The frozen installation archive SHA-256 is `97afdbcad0f0b1bd839836b40716800212d781bdd2d1db020706b14a4b906319`.
+
+Both isolated profiles loaded the exact frozen Host (`bdb40a93eda994ebe59207723176dc16680829be6c28662d0f1ed8ac4fb49664`) and Client (`8e3d33038f992389eec096324b3c6ad7a8bf9fb4b81cebd4f33a5e6b1fb365fc`) bundles. Hosts: official **DSH 0.2.1-alpha.1 Web** and **DSH 0.2.0-rc.2 macOS Desktop**. The Web checks ran in a browser against the actual DSH Host, not the standalone Jot preview.
+
+| Check | Observed result |
+| --- | --- |
+| Turn off AI collaboration during a running conversation | Passed in both Hosts. The first model request advertised all six Jot tools. While that request was held, the real UI switch was turned off. Its subsequent `jot_read` call was rejected as unknown; the next model request in the same turn carried zero Jot tools. Both conversations completed normally. |
+| Upload exactly 200 MiB | Passed through both actual UIs, including Desktop's `dsh-app` request forwarding. The ZIP was exactly **209,715,200 bytes**, containing one Markdown note and ten bounded binary attachments. All ten persisted payload sizes and SHA-256 values matched their originals on each Host. |
+| Desktop folder chooser and import | Passed through the native macOS picker using a Chinese-named folder. Two Markdown notes imported, the nested folder was preserved, and a referenced ZIP remained an intact attachment. An unused ZIP and a hidden backup ZIP did not block import and were not stored. |
+
+The tool test used a **local deterministic DeepSeek Messages endpoint** to hold and release responses and inspect actual serialized HTTP requests. Agent creation, the running agent loop, tool registration/removal, dispatch and the UI switch were the real DSH implementations. This is Host integration acceptance, not a provider-account or model-quality test. Requests already sent cannot be withdrawn; this does not claim cancellation of a tool body whose execution has already begun.
+
+All notes, attachments and prompts were synthetic and lived in separate DSH Homes and Electron user data. No production credentials were used. The two test collaboration switches were returned to off, the test services were stopped, and the normal Desktop environment was reopened. Screenshots and detailed evidence remain in ignored local `artifacts/agent-edit-host-qa/`.
+
+The prior **344-test** check, typecheck, Host/Client build and package-factory checks apply to these unchanged runtime bundles. Precise Markdown edits, delta polling and draft merging retain their unit/preview evidence; this focused native pass does not claim a new complete UI regression run. Windows/Linux native Desktop behavior remains unverified. Merge, CI and publication are separate steps.
 
 ## 0.2.6 — insert menu, library export and AI undo
 
