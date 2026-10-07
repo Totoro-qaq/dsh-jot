@@ -558,7 +558,20 @@ export const MAX_LIBRARY_EXPORT_NOTES = 2_000
 /** Each PDF embeds its own font subset (about 40 ms and 90 KiB per note), so PDF archives are smaller. */
 export const MAX_LIBRARY_PDF_NOTES = 500
 export const MAX_LIBRARY_EXPORT_BYTES = 200 * 1_024 * 1_024
-export interface LibraryExportNote { id: string; title: string; text: string; content: RichDoc; folderId: string | null }
+export interface LibraryExportNote {
+  id: string; title: string; text: string; content: RichDoc; folderId: string | null
+  pinned?: boolean; createdAt?: string; updatedAt?: string
+}
+/** Every library ZIP carries the exact notes, so Import can restore it whatever the file format. */
+export const LIBRARY_MANIFEST = 'jot-library.json'
+export interface LibraryManifest {
+  format: 'dsh-jot-library'
+  version: 1
+  exportedAt: string
+  folders: Array<{ id: string; name: string }>
+  notes: Array<{ title: string; content: RichDoc; folderId: string | null; pinned: boolean; createdAt?: string; updatedAt?: string; path: string }>
+  attachments: Array<{ id: string; name: string; mimeType: string; path: string }>
+}
 export interface LibraryExport extends NoteExport { notes: number; attachments: number }
 export interface LibraryExportOptions extends ExportOptions {
   locale?: 'zh' | 'en'
@@ -600,7 +613,7 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
   const maxBytes = options.maxBytes ?? MAX_LIBRARY_EXPORT_BYTES
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_LIBRARY_EXPORT_BYTES) invalid('Invalid library export size limit')
   const notes = input.notes.map(note => ({ ...note, content: validateRichDoc(note.content) }))
-  const used = new Set<string>()
+  const used = new Set<string>([LIBRARY_MANIFEST])
   const folders = new Map<string, string>()
   for (const folder of input.folders) folders.set(folder.id, uniquePath(used, '', filename(folder.name), ''))
   const attachmentDirectory = uniquePath(used, '', en ? 'attachments' : '附件', '')
@@ -640,10 +653,18 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
   }
   for (const file of assets.values()) addEntry(file.assetPath, file.data, false)
   const untitled = en ? 'Untitled' : '无标题'
+  const now = options.now ?? new Date()
+  const manifest: LibraryManifest = {
+    format: 'dsh-jot-library', version: 1, exportedAt: now.toISOString(),
+    folders: input.folders.filter(folder => notes.some(note => note.folderId === folder.id)).map(({ id, name }) => ({ id, name })),
+    notes: [], attachments: [...assets].map(([id, file]) => ({ id, name: file.name, mimeType: file.mimeType, path: file.assetPath })),
+  }
   for (const note of notes) {
     const directory = note.folderId ? folders.get(note.folderId) ?? '' : ''
     const title = displayTitle(note, untitled)
     const path = uniquePath(used, directory, filename(title), `.${format}`)
+    manifest.notes.push({ title: note.title, content: note.content, folderId: note.folderId, pinned: note.pinned === true,
+      ...note.createdAt ? { createdAt: note.createdAt } : {}, ...note.updatedAt ? { updatedAt: note.updatedAt } : {}, path })
     const document = { title, content: note.content }
     if (format === 'md') {
       // Links are relative to the note's own folder.
@@ -655,10 +676,10 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
       addEntry(path, data, false)
     }
   }
+  addEntry(LIBRARY_MANIFEST, strToU8(JSON.stringify(manifest)), true)
   const zipped = zipSync(entries, { level: 6 })
   const buffer = Buffer.from(zipped.buffer, zipped.byteOffset, zipped.byteLength)
   if (buffer.length > maxBytes) invalid('The export exceeds 200 MiB; export one folder at a time')
-  const now = options.now ?? new Date()
   const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   return { buffer, filename: `${en ? 'Jot' : '随记'}-${day}.zip`, contentType: 'application/zip', notes: notes.length, attachments: assets.size }
 }

@@ -126,6 +126,8 @@ body[data-ds-dark-theme] .jot-highlight-swatch{color:var(--jot-fg)!important}bod
 :is(.jot-app,.jot-overlay-root) .jot-export-choice strong{color:var(--jot-fg);font-weight:600}
 :is(.jot-app,.jot-overlay-root) .jot-export-choice small{color:var(--jot-muted);font:var(--jot-caption-font)}
 :is(.jot-app,.jot-overlay-root) .jot-export-note{margin:0;color:var(--jot-muted);font:var(--jot-caption-font);line-height:1.6}
+:is(.jot-app,.jot-overlay-root) .jot-import-pick{display:flex;flex-wrap:wrap;gap:8px}
+:is(.jot-app,.jot-overlay-root) .jot-import-summary{margin:0;padding:8px 10px;border:1px solid var(--jot-line);border-radius:8px;color:var(--jot-fg);overflow-wrap:anywhere}
 .jot-app button.jot-agent-chip{border:0;background:transparent;color:var(--dsw-alias-state-business-primary,var(--jot-accent));font:var(--jot-caption-font);cursor:pointer;border-radius:4px;padding:2px 4px;margin-left:2px}
 .jot-app button.jot-agent-chip:hover{background:var(--jot-hover)}
 .jot-app .jot-agent-indicator{display:inline-flex;align-items:center;flex:none;color:var(--jot-accent)}

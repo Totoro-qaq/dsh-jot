@@ -45,6 +45,10 @@ export interface Note {
   deletedAt: string | null
 }
 export type NoteSummary = Omit<Note, 'content' | 'text'>
+/** Library order: pinned first, then most recently modified. */
+export function compareNotes(a: Pick<Note, 'id' | 'pinned' | 'updatedAt'>, b: Pick<Note, 'id' | 'pinned' | 'updatedAt'>): number {
+  return Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)
+}
 export interface Folder { id: string; name: string; createdAt: string; updatedAt: string }
 export interface JotState { version: 1; notes: Note[]; folders: Folder[]; agentEnabled: boolean }
 export interface CreateNoteInput {
@@ -333,19 +337,6 @@ export function documentAttachmentIds(doc: RichDoc): Set<string> {
   return ids
 }
 
-/**
- * Formatting that the agent's Markdown-like text cannot express. Replacing
- * such a document with text would silently drop tables, files or colors.
- */
-export function documentHasRichOnlyContent(doc: RichDoc): boolean {
-  const visit = (node: RichNode): boolean => {
-    if (['table', 'image', 'attachment'].includes(node.type)) return true
-    if (node.marks?.some(mark => ['textStyle', 'highlight', 'underline'].includes(mark.type))) return true
-    return (node.content ?? []).some(visit)
-  }
-  return doc.content.some(visit)
-}
-
 export interface DocumentTask { index: number; text: string; checked: boolean }
 
 /** Checklist items in document order; indexes are 1-based for agents and people. */
@@ -376,111 +367,99 @@ export function setDocumentTask(doc: RichDoc, index: number, checked: boolean): 
   return validateRichDoc(result)
 }
 
-// A small Markdown subset for agent-written notes. Unknown syntax stays literal
-// text; nothing here interprets HTML.
-const SAFE_LINK = /^(?:https?:\/\/|mailto:)[^\s\u0000-\u001f]+$/iu
-const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+?\*\*|__[^_\n]+?__)|(~~[^~\n]+?~~)|(\[[^\]\n]+\]\([^)\s]+\))|((?<![\p{L}\p{N}*])\*[^*\s](?:[^*\n]*?[^*\s])?\*(?![\p{L}\p{N}*])|(?<![\p{L}\p{N}_])_[^_\s](?:[^_\n]*?[^_\s])?_(?![\p{L}\p{N}_]))/gu
+export interface TextEdit { find: string; replace: string; all?: boolean }
+const TEXT_BLOCKS = new Set(['paragraph', 'heading', 'codeBlock'])
+const blockText = (node: RichNode) => (node.content ?? []).map(child => child.type === 'text' ? child.text ?? '' : '\n').join('')
 
-function inlineNodes(text: string): RichNode[] {
-  const nodes: RichNode[] = []
-  const push = (value: string, marks?: RichMark[]) => {
-    if (!value) return
-    nodes.push(marks?.length ? { type: 'text', text: value, marks } : { type: 'text', text: value })
-  }
-  let offset = 0
-  for (const match of text.matchAll(INLINE)) {
-    const [token] = match
-    const start = match.index!
-    push(text.slice(offset, start))
-    offset = start + token.length
-    if (match[1]) push(token.slice(1, -1), [{ type: 'code' }])
-    else if (match[2]) push(token.slice(2, -2), [{ type: 'bold' }])
-    else if (match[3]) push(token.slice(2, -2), [{ type: 'strike' }])
-    else if (match[4]) {
-      const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/u.exec(token)!
-      if (SAFE_LINK.test(link[2]!) && link[2]!.length <= 2_048) push(link[1]!, [{ type: 'link', attrs: { href: link[2]! } }])
-      else push(token)
-    } else push(token.slice(1, -1), [{ type: 'italic' }])
-  }
-  push(text.slice(offset))
-  return nodes
+function occurrences(text: string, find: string): number[] {
+  const found: number[] = []
+  for (let index = text.indexOf(find); index >= 0; index = text.indexOf(find, index + find.length)) found.push(index)
+  return found
 }
-
-const paragraphOf = (text: string): RichNode => {
-  const content = inlineNodes(text)
-  return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }
+/** The inline content of [from, to) in a text block; partial text keeps its marks. */
+function sliceInline(children: readonly RichNode[], from: number, to: number): RichNode[] {
+  const result: RichNode[] = []
+  let position = 0
+  for (const child of children) {
+    const length = child.type === 'text' ? child.text!.length : 1
+    const start = Math.max(from, position), end = Math.min(to, position + length)
+    if (start < end) result.push(child.type === 'text' ? { ...child, text: child.text!.slice(start - position, end - position) } : child)
+    position += length
+  }
+  return result
 }
-const TASK_LINE = /^\s*(?:[-*+]\s+)?\[( |x|X)\]\s+(.*)$/u
-const BULLET_LINE = /^\s*[-*+]\s+(.*)$/u
-const ORDERED_LINE = /^\s*(\d{1,6})[.)]\s+(.*)$/u
-const TABLE_LINE = /^\s*\|.*\|\s*$/u
-const TABLE_RULE = /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{0,}:?\s*\|?\s*$/u
-
-function tableCells(line: string): string[] {
-  return line.trim().replace(/^\|/u, '').replace(/\|$/u, '').split('|').map(cell => cell.trim())
+function marksAt(children: readonly RichNode[], offset: number): RichMark[] | undefined {
+  let position = 0
+  for (const child of children) {
+    const length = child.type === 'text' ? child.text!.length : 1
+    if (offset < position + length) return child.type === 'text' ? child.marks : undefined
+    position += length
+  }
+  return undefined
+}
+function replaceInBlock(node: RichNode, find: string, replace: string, limit: number): RichNode {
+  const children = node.content ?? []
+  const text = blockText(node)
+  const matches = occurrences(text, find).slice(0, limit)
+  if (!matches.length) return node
+  const content: RichNode[] = []
+  let position = 0
+  for (const start of matches) {
+    content.push(...sliceInline(children, position, start))
+    const marks = marksAt(children, start)
+    const lines = node.type === 'codeBlock' ? [replace] : replace.split('\n')
+    lines.forEach((line, index) => {
+      if (index) content.push({ type: 'hardBreak' })
+      if (line) content.push(marks?.length ? { type: 'text', text: line, marks: structuredClone(marks) } : { type: 'text', text: line })
+    })
+    position = start + find.length
+  }
+  content.push(...sliceInline(children, position, text.length))
+  // Neighbouring text with the same formatting becomes one run again.
+  const merged: RichNode[] = []
+  for (const child of content) {
+    const last = merged.at(-1)
+    if (child.type === 'text' && last?.type === 'text' && JSON.stringify(last.marks ?? []) === JSON.stringify(child.marks ?? [])) {
+      merged[merged.length - 1] = { ...last, text: last.text! + child.text! }
+    } else merged.push(child)
+  }
+  const { content: _previous, ...rest } = node
+  return merged.length ? { ...rest, content: merged } : rest
 }
 
 /**
- * Convert agent-written text into a rich document: # headings, - lists,
- * 1. lists, - [ ] / [x] tasks, > quotes, ``` code, --- rules and | tables,
- * plus **bold**, *italic*, `code`, ~~strike~~ and [links](https://…).
- * Every other line becomes a literal paragraph.
+ * Replace exact text inside paragraphs, headings and code blocks without
+ * touching formatting: the new text takes the marks of the first character it
+ * replaces, and a match never crosses blocks. Every edit must match; one that
+ * matches several places needs `all`. Applied in order; all or nothing.
  */
-export function docFromMarkdown(source: string): RichDoc {
-  boundedString(source, MAX_TEXT_LENGTH, 'text')
-  const lines = source.replace(/\r\n?/gu, '\n').split('\n')
-  const blocks: RichNode[] = []
-  const list = (type: 'bulletList' | 'orderedList' | 'taskList', item: RichNode, start?: number) => {
-    const last = blocks.at(-1)
-    if (last?.type === type) last.content!.push(item)
-    else blocks.push({ type, ...(type === 'orderedList' ? { attrs: { start: start ?? 1 } } : {}), content: [item] })
-  }
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index]!
-    // Blank lines only separate blocks, as in Markdown.
-    if (!line.trim()) continue
-    const fence = /^\s*```\s*([\w+#.-]{0,80})\s*$/u.exec(line)
-    if (fence) {
-      const body: string[] = []
-      while (++index < lines.length && !/^\s*```\s*$/u.test(lines[index]!)) body.push(lines[index]!)
-      const text = body.join('\n')
-      blocks.push({ type: 'codeBlock', attrs: { language: fence[1] || null }, ...(text ? { content: [{ type: 'text', text }] } : {}) })
-      continue
+export function applyTextEdits(doc: RichDoc, edits: readonly TextEdit[]): { content: RichDoc; counts: number[] } {
+  if (!Array.isArray(edits) || edits.length === 0 || edits.length > 50) invalid('edits must list 1 to 50 changes')
+  let content = validateRichDoc(doc).content
+  const counts: number[] = []
+  edits.forEach((edit, position) => {
+    const data = record(edit, 'edit')
+    onlyKeys(data, ['find', 'replace', 'all'], 'edit')
+    const find = boundedString(data.find, 10_000, `edits[${position}].find`, false)
+    const replace = boundedString(data.replace, MAX_TEXT_LENGTH, `edits[${position}].replace`)
+    if (data.all !== undefined && typeof data.all !== 'boolean') invalid(`edits[${position}].all must be a boolean`)
+    let total = 0
+    const count = (node: RichNode) => {
+      if (TEXT_BLOCKS.has(node.type)) total += occurrences(blockText(node), find).length
+      else (node.content ?? []).forEach(count)
     }
-    const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*$/u.exec(line)
-    if (heading) {
-      // Closing hashes need a separator; the # in "C#" is literal content.
-      const text = /^#+$/u.test(heading[2]!) ? '' : heading[2]!.replace(/\s+#+$/u, '')
-      blocks.push({ type: 'heading', attrs: { level: heading[1]!.length }, content: inlineNodes(text) })
-      continue
+    content.forEach(count)
+    const label = find.length > 60 ? `${find.slice(0, 57)}…` : find
+    if (total === 0) {
+      throw new StoreError('INVALID_INPUT', `Edit ${position + 1}: "${label}" is not in the note. Match the note's visible text exactly, without Markdown markers such as ** or #, and within one paragraph.`)
     }
-    if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/u.test(line)) { blocks.push({ type: 'horizontalRule' }); continue }
-    if (TABLE_LINE.test(line) && index + 1 < lines.length && TABLE_RULE.test(lines[index + 1]!)) {
-      const rows = [tableCells(line)]
-      index++
-      while (index + 1 < lines.length && TABLE_LINE.test(lines[index + 1]!) && rows.length < 200) rows.push(tableCells(lines[++index]!))
-      const width = Math.max(...rows.map(row => row.length))
-      if (width > 50) invalid('Markdown table exceeds the 50-column limit')
-      blocks.push({ type: 'table', content: rows.map((row, rowIndex) => ({ type: 'tableRow', content: Array.from({ length: width }, (_, column) => ({
-        type: rowIndex === 0 ? 'tableHeader' : 'tableCell', content: [paragraphOf(row[column] ?? '')],
-      })) })) })
-      continue
+    if (total > 1 && data.all !== true) {
+      throw new StoreError('INVALID_INPUT', `Edit ${position + 1}: "${label}" appears ${total} times. Include nearby words so it is unique, or set all: true to replace every occurrence.`)
     }
-    const quote = /^\s{0,3}>\s?(.*)$/u.exec(line)
-    if (quote) {
-      const last = blocks.at(-1)
-      const paragraph = paragraphOf(quote[1]!)
-      if (last?.type === 'blockquote' && lines[index - 1] !== undefined && /^\s{0,3}>/u.test(lines[index - 1]!)) last.content!.push(paragraph)
-      else blocks.push({ type: 'blockquote', content: [paragraph] })
-      continue
-    }
-    const task = TASK_LINE.exec(line)
-    if (task) { list('taskList', { type: 'taskItem', attrs: { checked: task[1] !== ' ' }, content: [paragraphOf(task[2]!)] }); continue }
-    const bullet = BULLET_LINE.exec(line)
-    if (bullet) { list('bulletList', { type: 'listItem', content: [paragraphOf(bullet[1]!)] }); continue }
-    const ordered = ORDERED_LINE.exec(line)
-    if (ordered) { list('orderedList', { type: 'listItem', content: [paragraphOf(ordered[2]!)] }, Math.max(1, Math.min(1_000_000, Number(ordered[1])))); continue }
-    blocks.push(paragraphOf(line))
-  }
-  return validateRichDoc({ type: 'doc', content: blocks.length ? blocks : [{ type: 'paragraph' }] })
+    const visit = (node: RichNode): RichNode => TEXT_BLOCKS.has(node.type) ? replaceInBlock(node, find, replace, data.all === true ? Infinity : 1)
+      : node.content ? { ...node, content: node.content.map(visit) } : node
+    content = content.map(visit)
+    counts.push(total)
+  })
+  return { content: validateRichDoc({ type: 'doc', content }), counts }
 }

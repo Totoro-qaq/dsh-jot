@@ -8,7 +8,8 @@ import { createJotHandler } from '../src/http.js'
 import { AGENT_UNDO_DIRECTORY, BACKUP_FILENAME, JotStore, STATE_FILENAME, StoreError } from '../src/store.js'
 import { AttachmentStore } from '../src/attachments.js'
 import { createJotTools } from '../src/tools.js'
-import { docFromMarkdown, docFromText, documentAttachmentIds, type RichDoc } from '../src/model.js'
+import { docFromText, documentAttachmentIds, type RichDoc } from '../src/model.js'
+import { docFromMarkdown } from '../src/markdown.js'
 
 const code = (expected: string) => (error: unknown) => error instanceof StoreError && error.code === expected
 

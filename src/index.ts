@@ -8,9 +8,11 @@ import { JotStore } from './store.js'
 import { createJotHandler, JOT_API_PATH } from './http.js'
 import { registerJotTools } from './tools.js'
 import { AttachmentStore, DEFAULT_ATTACHMENT_MAX_BYTES, DEFAULT_ATTACHMENT_TOTAL_BYTES } from './attachments.js'
+import { documentAttachmentIds } from './model.js'
 import { createAttachmentActions } from './attachment-actions.js'
 
 export const name = 'dsh-jot'
+const AGENT_ACCESS_CHECK_MS = 10_000
 export const inject = ['webServer', 'connection', 'tools']
 export const Config = z.object({
   directory: z.string(),
@@ -25,7 +27,22 @@ export function apply(ctx: Context, config: { directory?: string; attachmentMaxB
   const actions = createAttachmentActions(attachments)
   const handler = createJotHandler(store, { authorize: request => ctx.connection.requestRejection(request), attachments, actions })
   ctx.effect(() => ctx.webServer.register({ kind: 'prefix', path: JOT_API_PATH, handler }), 'dsh-jot: authenticated application routes')
-  registerJotTools(ctx.tools, store)
+  const tools = registerJotTools(ctx.tools, store, {
+    verifyContent: content => attachments.assertReferences([...documentAttachmentIds(content)]),
+  })
+  ctx.effect(() => {
+    // Jot's tools reach the model only while the user allows AI collaboration.
+    let allowed = false
+    let running = true
+    const follow = () => { if (running) try { tools.sync(allowed) } catch { /* retried on the next check */ } }
+    const stop = store.onAgentAccess(enabled => { allowed = enabled; follow() })
+    const check = () => { void store.checkForChanges().catch(() => {}).finally(follow) }
+    check()
+    // Desktop and Web can share one notes folder; notice a switch flipped by the other process.
+    const timer = setInterval(check, AGENT_ACCESS_CHECK_MS)
+    timer.unref?.()
+    return () => { running = false; clearInterval(timer); stop(); tools.dispose() }
+  }, 'dsh-jot: agent tools follow the AI collaboration switch')
 }
 
 export { createJotHandler, JOT_API_PATH } from './http.js'

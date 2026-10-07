@@ -11,7 +11,8 @@ import { JotApiError } from '../src/client/api.js'
 import { createJotHandler } from '../src/http.js'
 import { AttachmentStore } from '../src/attachments.js'
 import { JotStore, StoreError } from '../src/store.js'
-import { docFromMarkdown, docToText, type RichDoc } from '../src/model.js'
+import { docToText, type RichDoc } from '../src/model.js'
+import { docFromMarkdown } from '../src/markdown.js'
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=', 'base64')
 const gif = Buffer.from('R0lGODlhAQABAAAAACw=', 'base64')
@@ -50,7 +51,7 @@ test('Markdown archives sort notes into folders and link shared attachments rela
   assert.deepEqual([exported.notes, exported.attachments], [4, 2])
   assert.equal(loads, 2, 'each attachment is read once although two notes share the image')
   const zip = unzipSync(exported.buffer)
-  assert.deepEqual(Object.keys(zip).sort(), ['a_b_c/奇怪的文件夹.md', '工作/周会 (2).md', '工作/周会.md', '没有标题时用第一行.md', '附件/动图.gif', '附件/示意图.png'])
+  assert.deepEqual(Object.keys(zip).sort(), ['a_b_c/奇怪的文件夹.md', 'jot-library.json', '工作/周会 (2).md', '工作/周会.md', '没有标题时用第一行.md', '附件/动图.gif', '附件/示意图.png'])
   const meeting = strFromU8(zip['工作/周会.md']!)
   assert.match(meeting, /^# 周会\n/u)
   assert.match(meeting, /- \[x\] 准备/u)
@@ -67,7 +68,7 @@ test('Word and PDF archives embed images and still carry every original file', a
     assert.equal(exported.filename, 'Jot-2026-10-05.zip')
     const zip = unzipSync(exported.buffer)
     const names = Object.keys(zip).sort()
-    assert.deepEqual(names, [`a_b_c/奇怪的文件夹.${format}`, `attachments/动图.gif`, 'attachments/示意图.png',
+    assert.deepEqual(names, [`a_b_c/奇怪的文件夹.${format}`, `attachments/动图.gif`, 'attachments/示意图.png', 'jot-library.json',
       `没有标题时用第一行.${format}`, `工作/周会 (2).${format}`, `工作/周会.${format}`].sort())
     const document = Buffer.from(zip[`工作/周会.${format}`]!)
     if (format === 'pdf') {
@@ -166,7 +167,7 @@ test('HTTP library export scopes to a folder or unfiled notes, never includes Tr
   assert.equal(all.headers.get('x-jot-export-attachments'), '1')
   assert.match(all.headers.get('content-disposition')!, /filename\*=UTF-8''/u)
   const names = Object.keys(unzipSync(new Uint8Array(await all.arrayBuffer()))).sort()
-  assert.deepEqual(names, ['未分类.md', '附件/图.png', '项目/在文件夹里.md'].sort())
+  assert.deepEqual(names, ['jot-library.json', '未分类.md', '附件/图.png', '项目/在文件夹里.md'].sort())
 
   const one = await post({ format: 'docx', folderId: folder.id })
   assert.equal(one.headers.get('x-jot-export-notes'), '1')

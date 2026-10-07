@@ -38,8 +38,8 @@ export function ExportDialog({ locale, scope, count, initialFormat, busy, error,
       </label>)}
     </fieldset>
     <p className="jot-export-note">{en
-      ? 'Each note becomes one file, sorted into folders inside one ZIP. PNG and JPG images are embedded in Word and PDF; other images and files are included as originals in the attachments folder.'
-      : '每篇笔记一个文件，按文件夹放进一个 ZIP。PNG、JPG 图片会嵌进 Word 和 PDF；其他图片和附件以原文件放在「附件」文件夹里。'}</p>
+      ? 'Each note becomes one file, sorted into folders inside one ZIP. PNG and JPG images are embedded in Word and PDF; other images and files are included as originals in the attachments folder. Import notes restores the ZIP exactly, using its jot-library.json.'
+      : '每篇笔记一个文件，按文件夹放进一个 ZIP。PNG、JPG 图片会嵌进 Word 和 PDF；其他图片和附件以原文件放在「附件」文件夹里。ZIP 里的 jot-library.json 让「导入笔记」能原样恢复这些笔记。'}</p>
     {tooManyForPdf && <p className="jot-dialog-error" role="status">{en
       ? `PDF exports at most ${PDF_NOTE_LIMIT} notes at once. Export one folder at a time, or choose Word.`
       : `PDF 一次最多导出 ${PDF_NOTE_LIMIT} 篇笔记，可以按文件夹分批导出，或改用 Word。`}</p>}

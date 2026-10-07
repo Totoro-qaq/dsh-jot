@@ -9,9 +9,10 @@ import { AttachmentStore } from '../src/attachments.js'
 import { JotStore, StoreError, ACTIVITY_FILENAME, STATE_FILENAME } from '../src/store.js'
 import { createJotTools } from '../src/tools.js'
 import {
-  appendBlocks, docFromMarkdown, docFromText, docToText, documentAttachmentIds, documentHasRichOnlyContent,
+  appendBlocks, docFromText, docToText, documentAttachmentIds,
   documentTasks, setDocumentTask, validateRichDoc, type RichDoc,
 } from '../src/model.js'
+import { docFromMarkdown, markdownLosses } from '../src/markdown.js'
 
 const code = (expected: string) => (error: unknown) => error instanceof StoreError && error.code === expected
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000' + '1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex')
@@ -28,7 +29,7 @@ test('Markdown-lite becomes structured blocks and leaves unknown syntax literal'
     '- [ ] Draft', '- [x] Review', '[ ] Read back format', '', '- one', '* two', '', '3. third', '4) fourth',
     '> quoted', '> still quoted', '---', '```ts', 'const a = 1', '```',
     '| Item | State |', '| --- | --- |', '| Entry | Done |',
-    'snake_case_name stays and <b>html</b> stays literal', '[unsafe](javascript:alert(1))',
+    'snake_case_name stays and <div>html</div> stays literal', '[unsafe](javascript:alert(1))',
   ].join('\n'))
   assert.deepEqual(doc.content.map(block => block.type), ['heading', 'paragraph', 'taskList', 'bulletList', 'orderedList',
     'blockquote', 'horizontalRule', 'codeBlock', 'table', 'paragraph', 'paragraph'])
@@ -42,7 +43,7 @@ test('Markdown-lite becomes structured blocks and leaves unknown syntax literal'
   assert.equal(doc.content[5]!.content!.length, 2)
   assert.equal(doc.content[8]!.content!.length, 2)
   assert.equal(doc.content[8]!.content![0]!.content![0]!.type, 'tableHeader')
-  assert.equal(docToText({ type: 'doc', content: [doc.content[9]!] }), 'snake_case_name stays and <b>html</b> stays literal')
+  assert.equal(docToText({ type: 'doc', content: [doc.content[9]!] }), 'snake_case_name stays and <div>html</div> stays literal')
   assert.equal(docToText({ type: 'doc', content: [doc.content[10]!] }), '[unsafe](javascript:alert(1))')
   assert.deepEqual(docFromMarkdown('').content, [{ type: 'paragraph' }])
 })
@@ -76,14 +77,18 @@ test('task helpers address checklist items in document order and refuse missing 
   assert.throws(() => setDocumentTask(doc, 0, true), code('INVALID_INPUT'))
 })
 
-test('rich-only detection and attachment references cover tables, files and color marks', () => {
+test('agent Markdown carries colors and files; only what it cannot express counts as a loss', () => {
   const attachment = 'a'.repeat(32)
   const rich: RichDoc = validateRichDoc({ type: 'doc', content: [
     { type: 'paragraph', content: [{ type: 'text', text: 'Hi', marks: [{ type: 'highlight', attrs: { color: '#fef08a' } }] }] },
     { type: 'attachment', attrs: { attachmentId: attachment, caption: 'file.pdf' } },
   ] })
-  assert.equal(documentHasRichOnlyContent(rich), true)
-  assert.equal(documentHasRichOnlyContent(docFromMarkdown('# Title\n- [x] **done**')), false)
+  assert.deepEqual(markdownLosses(rich), [])
+  assert.deepEqual(markdownLosses(docFromMarkdown('# Title\n- [x] **done**')), [])
+  const widths = validateRichDoc({ type: 'doc', content: [{ type: 'table', content: [
+    { type: 'tableRow', content: [{ type: 'tableHeader', attrs: { colwidth: [160] }, content: [{ type: 'paragraph' }] }] },
+  ] }] })
+  assert.match(markdownLosses(widths).join(), /table layout/u)
   assert.deepEqual([...documentAttachmentIds(rich)], [attachment])
 })
 
@@ -105,7 +110,11 @@ test('agent tools write checklists, extend them, tick items and refuse lossy rep
   const plain = await run('jot_create', { title: 'Literal', text: '- not a list', format: 'plain' })
   assert.equal((await store.getNote(plain.id)).content.content[0]!.type, 'paragraph')
 
-  const table = await store.createNote({ title: 'Table', content: docFromMarkdown('| A |\n| --- |\n| 1 |') })
+  // Column widths are layout Markdown cannot carry, so a whole-text rewrite needs consent.
+  const table = await store.createNote({ title: 'Table', content: validateRichDoc({ type: 'doc', content: [{ type: 'table', content: [
+    { type: 'tableRow', content: [{ type: 'tableHeader', attrs: { colwidth: [160] }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A' }] }] }] },
+    { type: 'tableRow', content: [{ type: 'tableCell', attrs: { colwidth: [160] }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '1' }] }] }] },
+  ] }] }) })
   await assert.rejects(run('jot_update', { id: table.id, revision: table.revision, text: 'flattened' }), code('INVALID_INPUT'))
   assert.equal((await store.getNote(table.id)).content.content[0]!.type, 'table')
   const replaced = await run('jot_update', { id: table.id, revision: table.revision, text: 'flattened', allowFormattingLoss: true })

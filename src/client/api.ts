@@ -1,4 +1,5 @@
-import type { AttachmentCapabilities, AttachmentInfo, Folder, JotApi, JotState, LibraryDownload, Note, NoteDownload, NoteInput, NotePatch, NoteQuery, PurgeResult } from './types.js'
+import { compareNotes } from '../model.js'
+import type { AgentEdit, AttachmentCapabilities, AttachmentInfo, Folder, ImportSummary, JotApi, JotState, LibraryDownload, Note, NoteDownload, NoteInput, NotePatch, NoteQuery, PurgeResult } from './types.js'
 
 export class JotApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -18,6 +19,24 @@ async function download(response: Response, fallback: string): Promise<NoteDownl
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
   if (encoded) try { filename = decodeURIComponent(encoded).replace(/[\\/\u0000-\u001f]/g, '_') } catch { /* retain safe fallback */ }
   return { blob: await response.blob(), filename }
+}
+
+/** The Host's answer when it still knows the client's version: what changed since `base`. */
+export interface StateDelta {
+  base: string
+  notes: Note[]
+  removed: string[]
+  folders: Folder[]
+  agentEnabled: boolean
+  agentEdits: Record<string, AgentEdit>
+}
+/** Unchanged notes keep their identity, so the list re-renders only what changed. */
+export function applyStateDelta(previous: JotState, delta: StateDelta): JotState {
+  const replaced = new Set([...delta.removed, ...delta.notes.map(note => note.id)])
+  return {
+    version: 1, folders: delta.folders, agentEnabled: delta.agentEnabled, agentEdits: delta.agentEdits,
+    notes: [...previous.notes.filter(note => !replaced.has(note.id)), ...delta.notes].sort(compareNotes),
+  }
 }
 
 export function createJotApi(base = '/jot/api'): JotApi {
@@ -47,9 +66,10 @@ export function createJotApi(base = '/jot/api'): JotApi {
     const sequence = ++stateRequest
     const generation = stateGeneration
     const previous = cachedState
+    // With a known version, a changed library comes back as the changes only.
     const response = await fetch(`${base}/state`, {
       credentials: 'same-origin', cache: 'no-store',
-      headers: previous?.tag ? { 'if-none-match': previous.tag } : undefined,
+      headers: previous?.tag ? { 'if-none-match': previous.tag, 'x-jot-state-delta': '1' } : undefined,
     })
     if (response.status === 304) {
       if (!previous?.tag) throw new JotApiError(304, 'REQUEST_FAILED', 'The Host returned an unchanged state without a cached snapshot.')
@@ -61,12 +81,17 @@ export function createJotApi(base = '/jot/api'): JotApi {
       cachedState = { ...accepted, request: Math.max(sequence, accepted.request) }
       return cachedState.state
     }
-    const payload = await response.json() as { data?: JotState; error?: { code?: string; message?: string } }
+    const payload = await response.json() as { data?: JotState; delta?: StateDelta; error?: { code?: string; message?: string } }
     if (!response.ok || payload.error) {
       throw new JotApiError(response.status, payload.error?.code ?? 'REQUEST_FAILED', payload.error?.message ?? `HTTP ${response.status}`)
     }
     const tag = response.headers.get('etag')
-    const state = payload.data
+    if (payload.delta && (!previous || payload.delta.base !== previous.tag)) {
+      // Changes for a version this panel does not hold: ask once more for the whole library.
+      if (cachedState?.tag === previous?.tag) cachedState = cachedState && { ...cachedState, tag: null }
+      return getState()
+    }
+    const state = payload.delta ? applyStateDelta(previous!.state, payload.delta) : payload.data
     if (!state) throw new JotApiError(response.status, 'REQUEST_FAILED', 'The Host returned no notes snapshot.')
     if (generation !== stateGeneration) return getState()
     // Only a newer successful response supersedes this one. A later request
@@ -123,6 +148,17 @@ export function createJotApi(base = '/jot/api'): JotApi {
       return { ...file, notes: Number(response.headers.get('x-jot-export-notes') ?? 0), attachments: Number(response.headers.get('x-jot-export-attachments') ?? 0) }
     },
     revertAgentEdit: (id, revision) => request<Note>(`${notePath(id)}/revert-agent-edit`, 'POST', { revision }),
+    async importNotes(archive, options) {
+      const response = await fetch(`${base}/import?locale=${options.locale === 'en' ? 'en' : 'zh'}`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/zip' }, body: archive,
+      })
+      const payload = await response.json() as { data?: ImportSummary; error?: { code?: string; message?: string } }
+      if (!response.ok || payload.error || !payload.data) {
+        throw new JotApiError(response.status, payload.error?.code ?? 'IMPORT_FAILED', payload.error?.message ?? `HTTP ${response.status}`)
+      }
+      stateGeneration++
+      return payload.data
+    },
   }
 }
 

@@ -54,6 +54,17 @@ export interface LibraryExportOptions {
   locale: JotLocale
 }
 
+/** What an import added; `jot` means a Jot library export was restored exactly. */
+export interface ImportSummary {
+  source: 'jot' | 'markdown'
+  notes: number
+  skipped: number
+  folders: number
+  attachments: number
+  missing: number
+  unreadable: number
+}
+
 export interface JotApi {
   getState(): Promise<JotState>
   listNotes(query?: NoteQuery): Promise<Note[]>
@@ -80,6 +91,8 @@ export interface JotApi {
   exportLibrary?(options: LibraryExportOptions): Promise<LibraryDownload>
   /** Restore the version from before the latest run of AI edits. */
   revertAgentEdit?(id: string, revision: number): Promise<Note>
+  /** Add the notes in one ZIP: a Jot library export or packed Markdown and text files. */
+  importNotes?(archive: Blob, options: { locale: JotLocale }): Promise<ImportSummary>
 }
 
 export type JotLocale = 'zh' | 'en'

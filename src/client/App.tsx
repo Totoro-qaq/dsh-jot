@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { defaultJotApi, JotApiError } from './api.js'
-import { draftFromNote, draftFingerprint, editDraft, emptyDocument, persistDraft, readDraft, receiveLatestDraft, reconcileDraft, recoveryDrafts, sameDraftGeneration, savedDraft, sharedDraftStorage } from './drafts.js'
-import type { NoteDraft } from './drafts.js'
+import { draftBase, draftFromNote, draftFingerprint, editDraft, emptyDocument, mergeRemoteChange, persistDraft, readDraft, receiveLatestDraft, reconcileDraft, recoveryDrafts, sameDraftGeneration, savedDraft, sharedDraftStorage } from './drafts.js'
+import type { DraftBase, NoteDraft } from './drafts.js'
 import { editHumanDraft, takeUntouchedFreshNote } from './draft-lifecycle.js'
 import { RichEditor, type RichEditorActions } from './RichEditor.js'
 import { appShortcut } from './app-shortcuts.js'
@@ -13,6 +13,8 @@ import { AttachmentPreview } from './AttachmentPreview.js'
 import { CaptureDialog, type CaptureSubmission } from './CaptureDialog.js'
 import { ShortcutHelp } from './ShortcutHelp.js'
 import { ExportDialog } from './ExportDialog.js'
+import { ImportDialog } from './ImportDialog.js'
+import { ImportPackError, importFile, packImport } from './import-files.js'
 import { appendExcerpt, duplicateNoteInput, sortNotes, type NoteSortMode } from './note-actions.js'
 import { downloadNote } from './downloads.js'
 import { exportSavedLibrary } from './library-export.js'
@@ -22,7 +24,7 @@ import { NoteList } from './NoteList.js'
 import { noteMatchesQuery, searchElsewhere } from './note-list.js'
 import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note-handoff.js'
 import { consumeJotCommand, type JotCommandRequest } from './commands.js'
-import type { AttachmentInfo, ExportFormat, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
+import type { AttachmentInfo, ExportFormat, ImportSummary, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
 import type { AttachmentDialogRequest } from './attachment-dialog.js'
 
 export interface JotAppProps {
@@ -83,6 +85,8 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   }, [])
   useEffect(() => releaseEditorFocus, [releaseEditorFocus])
   const drafts = useRef(new Map<string, NoteDraft>())
+  /** The saved version each draft started from, so an append elsewhere can merge instead of conflicting. */
+  const bases = useRef(new Map<string, DraftBase>())
   const selectionGeneration = useRef(0)
   const uploadTarget = useRef<{ draft: NoteDraft; generation: number } | null>(null)
   const noteRequests = useRef(new NoteOpenConsumer())
@@ -133,6 +137,8 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const [helpOpen, setHelpOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportError, setExportError] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
+  const [importError, setImportError] = useState('')
   const [revertConfirm, setRevertConfirm] = useState(false)
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentInfo | null>(null)
   const attachmentRequest = useRef<AbortController | null>(null)
@@ -174,11 +180,27 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
 
   const installDraft = useCallback((next: NoteDraft) => {
     const stored = persistDraft(next)
+    if (!stored.dirty) bases.current.set(stored.noteId, { revision: stored.baseRevision, title: stored.title,
+      content: stored.content, folderId: stored.folderId, pinned: stored.pinned })
     if (uploadTarget.current?.generation === selectionGeneration.current && uploadTarget.current.draft.noteId === stored.noteId) uploadTarget.current.draft = stored
     drafts.current.set(stored.noteId, stored)
     draftRef.current = stored
     if (mounted.current) setDraft(stored)
   }, [])
+
+  /** Fold content added elsewhere, often by AI, into the active unsaved draft. False leaves a conflict. */
+  const mergeRemote = useCallback((current: NoteDraft, remote: Note): boolean => {
+    if (draftRef.current?.noteId !== current.noteId) return false
+    const merged = mergeRemoteChange(current, bases.current.get(current.noteId), remote)
+    if (!merged) return false
+    bases.current.set(remote.id, draftBase(remote))
+    const { title, content, folderId, pinned, baseRevision } = merged.draft
+    installDraft({ ...editDraft(current, { title, content, folderId, pinned }), baseRevision })
+    setStatus(current.noteId, { phase: 'dirty' })
+    showToast(merged.appended ? copy('别处追加的内容已合并到你的草稿末尾', 'Content added elsewhere was merged at the end of your draft')
+      : copy('别处修改的标题、文件夹或置顶已同步', 'A title, folder or pin change from elsewhere was applied'))
+    return true
+  }, [installDraft, setStatus, showToast, locale])
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current
@@ -206,9 +228,12 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       return
     }
     const result = reconcileDraft(current, remote)
-    if (result.remoteChanged && !inFlight.current.has(current.noteId)) setStatus(current.noteId, { phase: 'conflict' })
+    if (result.remoteChanged && !inFlight.current.has(current.noteId)) {
+      if (mergeRemote(current, remote)) return
+      setStatus(current.noteId, { phase: 'conflict' })
+    }
     if (result.draft !== current && !inFlight.current.has(current.noteId)) installDraft(result.draft)
-  }, [installDraft, setStatus])
+  }, [installDraft, setStatus, mergeRemote])
 
   const saveDraft = useCallback((id: string): Promise<boolean> => {
     const existing = inFlight.current.get(id)
@@ -216,12 +241,14 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     const submitted = drafts.current.get(id)
     if (!submitted?.dirty) return Promise.resolve(true)
     setStatus(id, { phase: 'saving' })
+    let rejected: string | undefined
     const operation = (async () => {
       try {
         const saved = await apiRef.current.updateNote(id, {
           revision: submitted.baseRevision, title: submitted.title, content: submitted.content,
           folderId: submitted.folderId, pinned: submitted.pinned,
         })
+        bases.current.set(saved.id, draftBase(saved))
         const current = drafts.current.get(id) ?? submitted
         const next = savedDraft(current, submitted, saved)
         drafts.current.set(id, next)
@@ -241,16 +268,23 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       } catch (cause) {
         const conflict = cause instanceof JotApiError && cause.status === 409
           || typeof cause === 'object' && cause !== null && 'status' in cause && cause.status === 409
-        setStatus(id, { phase: conflict ? 'conflict' : 'error', message: describeError(cause, locale) })
+        // A note that only grew elsewhere merges after the refresh below; anything else is a conflict.
+        if (conflict) rejected = describeError(cause, locale)
+        else setStatus(id, { phase: 'error', message: describeError(cause, locale) })
         return false
       } finally {
         inFlight.current.delete(id)
-        if (mounted.current) void refresh().catch(() => {})
+        if (mounted.current) void refresh().catch(() => {}).finally(() => {
+          if (rejected === undefined || statusesRef.current[id]?.phase !== 'saving') return
+          const current = drafts.current.get(id)
+          const latest = snapshotRef.current?.notes.find(note => note.id === id)
+          if (!current || !latest || !mergeRemote(current, latest)) setStatus(id, { phase: 'conflict', message: rejected })
+        })
       }
     })()
     inFlight.current.set(id, operation)
     return operation
-  }, [installDraft, refresh, setStatus, locale])
+  }, [installDraft, refresh, setStatus, mergeRemote, locale])
 
   useEffect(() => {
     mounted.current = true
@@ -577,7 +611,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   useEffect(() => {
     handledCommand.current = consumeJotCommand(commandRequest, {
       ready: Boolean(snapshot), busy, lastHandled: handledCommand.current,
-      blocked: captureOpen || moveOpen || helpOpen || exportOpen || revertConfirm || Boolean(purgeConfirm) || Boolean(attachmentPreview),
+      blocked: captureOpen || moveOpen || helpOpen || exportOpen || importOpen || revertConfirm || Boolean(purgeConfirm) || Boolean(attachmentPreview),
     }, {
       claim: onCommandClaim,
       acknowledge: onCommandHandled,
@@ -587,7 +621,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         else openCapture(request.text ?? '')
       },
     })
-  }, [commandRequest, snapshot, busy, captureOpen, moveOpen, helpOpen, exportOpen, revertConfirm, purgeConfirm, attachmentPreview])
+  }, [commandRequest, snapshot, busy, captureOpen, moveOpen, helpOpen, exportOpen, importOpen, revertConfirm, purgeConfirm, attachmentPreview])
 
   const duplicateNote = () => void perform(async () => {
     const current = draftRef.current
@@ -783,6 +817,38 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     finally { if (mounted.current) setBusy(false) }
   }
 
+  const importSummary = (result: ImportSummary): string => {
+    if (!result.notes) return result.skipped
+      ? copy(`这 ${result.skipped} 篇笔记已经在随记里了，没有重复导入。`, `These ${result.skipped} notes are already in Jot; nothing was added.`)
+      : copy('没有导入任何笔记。', 'No notes were imported.')
+    const parts = [copy(`已导入 ${result.notes} 篇笔记`, `Imported ${listLabel(result.notes)}`)]
+    if (result.folders) parts.push(copy(`新建 ${result.folders} 个文件夹`, `${result.folders} new ${result.folders === 1 ? 'folder' : 'folders'}`))
+    if (result.skipped) parts.push(copy(`跳过 ${result.skipped} 篇重复的`, `${result.skipped} duplicates skipped`))
+    if (result.missing) parts.push(copy(`${result.missing} 个图片或附件没有找到`, `${result.missing} images or files not found`))
+    if (result.unreadable) parts.push(copy(`${result.unreadable} 个文件无法读取`, `${result.unreadable} files could not be read`))
+    return parts.join(copy('，', ', '))
+  }
+  /** Notes from Markdown files, a folder or a Jot export; the list then shows every folder. */
+  const importFiles = async (files: File[]) => {
+    if (busy || !api.importNotes) return
+    setBusy(true); setImportError('')
+    try {
+      const archive = await packImport(files.map(importFile))
+      const result = await api.importNotes(archive, { locale })
+      setImportOpen(false)
+      setView('all'); setFolderFilter('__all__'); setQuery('')
+      await refresh()
+      showToast(importSummary(result))
+    } catch (cause) {
+      setImportError(cause instanceof ImportPackError ? cause.problem === 'mixed-archive'
+        ? copy('ZIP 压缩包请单独导入，一次一个。', 'Import a ZIP on its own, one at a time.')
+        : cause.problem === 'too-large' ? copy('所选内容超过 200 MiB，请分批导入。', 'The selection is over 200 MiB. Import it in parts.')
+          : copy('没有找到 Markdown 或文本文件。', 'No Markdown or text files were found.')
+        : describeError(cause, locale))
+    } finally { if (mounted.current) setBusy(false) }
+  }
+  const openImport = () => { setImportError(''); setImportOpen(true) }
+
   const toggleAgent = () => void perform(async () => {
     const enabled = !snapshot?.agentEnabled
     await api.setAgentEnabled(enabled); await refresh()
@@ -853,6 +919,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       onSelect: () => { setFolderForm('create'); setFolderName(''); setFolderDeleteConfirm(false) } }] : []),
     ...(view !== 'trash' && api.exportLibrary ? [{ label: folderFilter === '__all__' ? copy('导出全部笔记…', 'Export all notes…') : copy('导出这些笔记…', 'Export these notes…'),
       icon: 'export' as const, disabled: busy || exportable === 0, onSelect: () => { setExportError(''); setExportOpen(true) } }] : []),
+    ...(view !== 'trash' && api.importNotes ? [{ label: copy('导入笔记…', 'Import notes…'), disabled: busy, onSelect: openImport }] : []),
     { separator: true } as const,
     { label: copy('键盘快捷键', 'Keyboard shortcuts'), onSelect: () => setHelpOpen(true) },
     ...(view === 'trash' && api.emptyTrash ? [{ label: copy('清空回收站…', 'Empty Trash…'), icon: 'trash' as const, danger: true,
@@ -1010,6 +1077,8 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
           </> : <p>{copy('换个关键词试试。', 'Try another word.')}</p>
             : <p>{view === 'trash' ? copy('移到回收站的笔记会留在这里，可以恢复。', 'Notes you move to Trash wait here and can be restored.') : copy('一句提醒，一张清单，或者还没想完的事。', 'A reminder, a list, or something still taking shape.')}</p>}
           {!query.trim() && view !== 'trash' && <button className="jot-btn jot-primary" type="button" onClick={newNote} disabled={busy}>{copy('新建笔记', 'New note')}</button>}
+          {!query.trim() && view !== 'trash' && api.importNotes && !snapshot.notes.length && <button className="jot-text-btn" type="button" onClick={openImport} disabled={busy}>
+            {copy('导入已有的笔记…', 'Import existing notes…')}</button>}
         </div>}
       </div>}
       <div className="jot-agent-line">
@@ -1238,6 +1307,9 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       <ExportDialog locale={locale} scope={exportScope} count={exportable} busy={busy} error={exportError}
         initialFormat={(['docx', 'pdf', 'md'] as const).find(format => format === storage.get('dsh-jot:export-format:v1')) ?? 'docx'}
         onSubmit={format => void exportLibrary(format)} onClose={() => setExportOpen(false)} />
+    </Modal>}
+    {importOpen && <Modal size="small" title={copy('导入笔记', 'Import notes')} closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setImportOpen(false) }}>
+      <ImportDialog locale={locale} busy={busy} error={importError} onImport={files => void importFiles(files)} onClose={() => setImportOpen(false)} />
     </Modal>}
     {revertConfirm && draft && <Modal size="small" title={copy('撤销 AI 的修改', 'Undo AI edits')} closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setRevertConfirm(false) }}>
       <p className="jot-dialog-text">{copy('这篇笔记会回到 AI 修改之前的样子；AI 连续做的几次修改会一起撤销。AI 写入的版本不会另外保留。',

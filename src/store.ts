@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
+import type { Stats } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { acquireFileLock } from './file-lock.js'
 import {
-  StoreError, appendBlocks, boundedString, docFromText, docToText, documentAttachmentIds, onlyKeys, record,
+  StoreError, appendBlocks, boundedString, compareNotes, docFromText, docToText, documentAttachmentIds, onlyKeys, record,
   validateActor, validateId, validateRichDoc,
   MAX_FOLDER_NAME_LENGTH, MAX_TEXT_LENGTH, MAX_TITLE_LENGTH,
   type Actor, type CreateNoteInput, type Folder, type JotState,
@@ -38,15 +39,30 @@ function date(value: unknown): string {
 function timestamp(previous?: string): string {
   return new Date(Math.max(Date.now(), previous === undefined ? 0 : Date.parse(previous) + 1)).toISOString()
 }
-function compareNotes(a: Note, b: Note): number {
-  return Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)
-}
 function summary(note: Note): NoteSummary {
   const { content: _content, text: _text, ...metadata } = note
   return structuredClone(metadata)
 }
+/** A valid saved timestamp no later than `latest`. */
+function importedDate(value: unknown, latest: string): string | undefined {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) return undefined
+  return value <= latest ? value : undefined
+}
 function emptyState(): JotState { return { version: 1, notes: [], folders: [], agentEnabled: false } }
 const contentTag = (source: string): string => createHash('sha256').update(source).digest('base64url').slice(0, 22)
+
+/**
+ * Every save replaces the file, so a matching identity means unchanged bytes.
+ * A file written in the last two seconds is read anyway: file systems with
+ * coarse timestamps could otherwise hide a rewrite within the same tick.
+ */
+const identity = (info: Stats) => ({ key: `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`, settled: Date.now() - info.mtimeMs > 2_000 })
+async function fileIdentity(path: string): Promise<{ key: string; settled: boolean } | null> {
+  try { return identity(await stat(path)) }
+  catch (cause) { return isErrno(cause, 'ENOENT') ? { key: 'missing', settled: true } : null }
+}
+/** Recent library versions a client may still hold, for answering with changes only. */
+const SNAPSHOT_HISTORY = 16
 
 /** The latest saved revision of a note that came from an agent tool. */
 export interface AgentEdit {
@@ -60,7 +76,27 @@ export interface AgentUndoBefore { revision: number; title: string; content: Ric
 interface AgentUndo { version: 1; noteId: string; revision: number; at: string; before: AgentUndoBefore }
 /** User-facing snapshot: the notes state plus agent attribution for unchanged agent revisions. */
 export interface JotSnapshot extends JotState { agentEdits: Record<string, AgentEdit> }
+/** What changed since the client's version `base`: changed or new notes, removed ids, and the small rest in full. */
+export interface JotSnapshotDelta {
+  base: string
+  notes: Note[]
+  removed: string[]
+  folders: Folder[]
+  agentEnabled: boolean
+  agentEdits: Record<string, AgentEdit>
+}
 export interface PurgeResult { purged: string[]; attachments: string[] }
+/** One note to import; its folder is named, and created when no folder has that name. */
+export interface ImportedNote {
+  title: string
+  content: RichDoc
+  folder: string | null
+  pinned?: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+export interface ImportOutcome { created: Note[]; skipped: number; folders: number }
+const MAX_NOTES = 10_000
 
 function validateState(input: unknown): JotState {
   const data = record(input, 'state')
@@ -123,6 +159,12 @@ export class JotStore {
    * Read-only operations receive the cached object and must not mutate it.
    */
   private cache: { source: string; state: JotState; tag: string } | null = null
+  /** File identities behind the last snapshot tag; an unchanged poll needs no lock or read. */
+  private snapshotFiles: { tag: string; state: string; activity: string } | null = null
+  private stateFile: string | null = null
+  private readonly revisions = new Map<string, Map<string, number>>()
+  private readonly accessListeners = new Set<(enabled: boolean) => void>()
+  private agentAccess: boolean | undefined
 
   constructor(options: StoreOptions) {
     const input = record(options, 'store options')
@@ -147,17 +189,44 @@ export class JotStore {
     })
   }
 
+  /** Called with the AI access setting whenever the Store reads or writes a different value, from any process. */
+  onAgentAccess(listener: (enabled: boolean) => void): () => void {
+    this.accessListeners.add(listener)
+    if (this.agentAccess !== undefined) listener(this.agentAccess)
+    return () => { this.accessListeners.delete(listener) }
+  }
+  private noticeAccess(state: JotState): void {
+    if (state.agentEnabled === this.agentAccess) return
+    this.agentAccess = state.agentEnabled
+    for (const listener of this.accessListeners) {
+      try { listener(state.agentEnabled) } catch { /* a listener cannot fail the notes operation */ }
+    }
+  }
+  /** Reread the notes file only when it changed on disk, so changes by another process reach listeners. */
+  async checkForChanges(): Promise<void> {
+    const identity = await fileIdentity(this.statePath)
+    if (identity && identity.key === this.stateFile) return
+    await this.access('user', false, () => null)
+  }
+
   private async load(readOnly = false): Promise<{ state: JotState; previous: string | null; tag: string }> {
     let source: string
+    let file: ReturnType<typeof identity>
     try {
       const info = await stat(this.statePath)
       if (info.size > MAX_STATE_BYTES) throw new StoreError('CORRUPT_STATE', 'The notes state exceeds its size limit')
+      file = identity(info)
       source = await readFile(this.statePath, 'utf8')
     } catch (cause) {
       if (isErrno(cause, 'ENOENT')) {
         try { await stat(this.backupPath) }
         catch (backupError) {
-          if (isErrno(backupError, 'ENOENT')) return { state: emptyState(), previous: null, tag: 'empty' }
+          if (isErrno(backupError, 'ENOENT')) {
+            const state = emptyState()
+            this.stateFile = 'missing'
+            this.noticeAccess(state)
+            return { state, previous: null, tag: 'empty' }
+          }
           throw new StoreError('PERSISTENCE_ERROR', 'Cannot inspect the notes backup', { cause: backupError })
         }
         throw new StoreError('CORRUPT_STATE', 'The main notes file is missing but a backup exists; restore it explicitly before continuing')
@@ -165,8 +234,12 @@ export class JotStore {
       if (cause instanceof StoreError) throw cause
       throw new StoreError('PERSISTENCE_ERROR', 'Cannot read the notes state', { cause })
     }
+    this.stateFile = file.settled ? file.key : null
     const cached = this.cache
-    if (cached?.source === source) return { state: readOnly ? cached.state : structuredClone(cached.state), previous: source, tag: cached.tag }
+    if (cached?.source === source) {
+      this.noticeAccess(cached.state)
+      return { state: readOnly ? cached.state : structuredClone(cached.state), previous: source, tag: cached.tag }
+    }
     let state: JotState
     try { state = validateState(JSON.parse(source)) }
     catch (cause) {
@@ -174,6 +247,7 @@ export class JotStore {
     }
     const tag = contentTag(source)
     this.cache = { source, state: readOnly ? state : structuredClone(state), tag }
+    this.noticeAccess(state)
     return { state, previous: source, tag }
   }
 
@@ -198,6 +272,8 @@ export class JotStore {
       }
       await rename(temporary, this.statePath)
       this.cache = { source: serialized, state: validated, tag: contentTag(serialized) }
+      this.stateFile = null
+      this.noticeAccess(validated)
     } catch (cause) {
       throw new StoreError('PERSISTENCE_ERROR', 'Could not save notes; the previous state remains active', { cause })
     } finally {
@@ -358,17 +434,37 @@ export class JotStore {
    * The user's library view with a content tag. When the tag equals `ifNoneMatch`,
    * the notes are not copied or returned, allowing an HTTP 304.
    */
-  async readSnapshot(ifNoneMatch?: string): Promise<{ tag: string; snapshot?: JotSnapshot }> {
+  async readSnapshot(ifNoneMatch?: string, options: { delta?: boolean } = {}): Promise<{ tag: string; snapshot?: JotSnapshot; delta?: JotSnapshotDelta }> {
+    // Polling panels mostly find nothing new: compare file identities before taking the lock.
+    const known = this.snapshotFiles
+    if (ifNoneMatch !== undefined && known?.tag === ifNoneMatch) {
+      const [state, activity] = await Promise.all([fileIdentity(this.statePath), fileIdentity(this.activityPath)])
+      if (state?.key === known.state && activity?.key === known.activity) return { tag: ifNoneMatch }
+    }
     const unlock = await this.lock()
     try {
+      const [stateFile, activityFile] = await Promise.all([fileIdentity(this.statePath), fileIdentity(this.activityPath)])
       const { state, tag } = await this.load(true)
       const activity = await this.readActivity()
       const combined = `"${tag}.${activity.tag}"`
+      this.snapshotFiles = stateFile?.settled && activityFile?.settled ? { tag: combined, state: stateFile.key, activity: activityFile.key } : null
+      const revisions = new Map(state.notes.map(note => [note.id, note.revision]))
+      this.revisions.delete(combined)
+      this.revisions.set(combined, revisions)
+      for (const old of this.revisions.keys()) if (this.revisions.size > SNAPSHOT_HISTORY) this.revisions.delete(old)
       if (ifNoneMatch !== undefined && ifNoneMatch === combined) return { tag: combined }
       const agentEdits: Record<string, AgentEdit> = {}
       for (const note of state.notes) {
         const edit = activity.edits[note.id]
         if (edit && edit.revision === note.revision) agentEdits[note.id] = edit
+      }
+      // Every note change raises its revision, so a known version needs only what differs.
+      const base = options.delta && ifNoneMatch !== undefined ? this.revisions.get(ifNoneMatch) : undefined
+      if (base) {
+        return { tag: combined, delta: structuredClone({
+          base: ifNoneMatch!, notes: state.notes.filter(note => base.get(note.id) !== note.revision),
+          removed: [...base.keys()].filter(id => !revisions.has(id)), folders: state.folders, agentEnabled: state.agentEnabled, agentEdits,
+        }) }
       }
       return { tag: combined, snapshot: structuredClone({ ...state, notes: [...state.notes].sort(compareNotes), agentEdits }) }
     } finally { await unlock() }
@@ -522,6 +618,61 @@ export class JotStore {
       }
       return { purged: [...ids], attachments }
     } finally { await unlock() }
+  }
+  /**
+   * Add many notes in one save. Folders are matched by name and created when
+   * missing; a note identical to an existing one (same title and document) is
+   * skipped, so importing the same backup twice adds nothing.
+   */
+  async importNotes(notes: readonly ImportedNote[], actor: Actor = 'user', verify?: ContentVerifier): Promise<ImportOutcome> {
+    validateActor(actor)
+    if (actor !== 'user') throw new StoreError('HUMAN_ONLY', 'Only the user can import notes')
+    if (!Array.isArray(notes) || notes.length === 0) invalid('There are no notes to import')
+    return this.access(actor, true, async state => {
+      const known = new Set(state.notes.filter(note => note.deletedAt === null).map(note => JSON.stringify([note.title, note.content])))
+      const folders = new Map(state.folders.map(folder => [folder.name.toLocaleLowerCase(), folder]))
+      const accepted: Array<{ input: ImportedNote; title: string; content: RichDoc }> = []
+      let skipped = 0
+      for (const input of notes) {
+        const data = record(input, 'imported note')
+        onlyKeys(data, ['title', 'content', 'folder', 'pinned', 'createdAt', 'updatedAt'], 'imported note')
+        const title = boundedString(data.title, MAX_TITLE_LENGTH, 'title')
+        const content = validateRichDoc(data.content)
+        const key = JSON.stringify([title, content])
+        if (known.has(key)) { skipped++; continue }
+        known.add(key)
+        accepted.push({ input, title, content })
+      }
+      if (state.notes.length + accepted.length > MAX_NOTES) invalid(`Jot holds at most ${MAX_NOTES} notes, including Trash`)
+      await verify?.({ type: 'doc', content: accepted.flatMap(item => item.content.content) })
+      const created: Note[] = []
+      let createdFolders = 0
+      let clock: string | undefined
+      for (const { input, title, content } of accepted) {
+        let folderId: string | null = null
+        const name = typeof input.folder === 'string' ? input.folder.trim().slice(0, MAX_FOLDER_NAME_LENGTH).trim() : ''
+        if (name) {
+          let folder = folders.get(name.toLocaleLowerCase())
+          if (!folder) {
+            const now = timestamp()
+            folder = { id: randomUUID(), name, createdAt: now, updatedAt: now }
+            state.folders.push(folder)
+            folders.set(name.toLocaleLowerCase(), folder)
+            createdFolders++
+          }
+          folderId = folder.id
+        }
+        clock = timestamp(clock)
+        // Dates from a backup or the original files keep the library's order; anything else is now.
+        const updatedAt = importedDate(input.updatedAt, clock) ?? clock
+        const createdAt = importedDate(input.createdAt, updatedAt) ?? updatedAt
+        const note: Note = { id: randomUUID(), title, content, text: docToText(content), folderId,
+          pinned: input.pinned === true, revision: 1, createdAt, updatedAt, deletedAt: null }
+        state.notes.push(note)
+        created.push(note)
+      }
+      return { created, skipped, folders: createdFolders }
+    })
   }
   async createFolder(name: string, actor: Actor = 'user'): Promise<Folder> {
     return this.access(actor, true, state => {

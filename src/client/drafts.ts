@@ -1,4 +1,5 @@
-import type { Note, RichDoc } from './types.js'
+import { appendBlocks, type RichNode as StoredNode } from '../model.js'
+import type { Note, RichDoc, RichNode } from './types.js'
 
 export interface NoteDraft {
   noteId: string
@@ -44,6 +45,57 @@ export function sameDraftGeneration(left: NoteDraft | null | undefined, right: N
 export function reconcileDraft(draft: NoteDraft, note: Note): { draft: NoteDraft; remoteChanged: boolean } {
   if (!draft.dirty) return { draft: draftFromNote(note), remoteChanged: false }
   return { draft, remoteChanged: draft.baseRevision !== note.revision || note.deletedAt !== null }
+}
+
+/** The saved version a draft started from, kept so a later remote change can be compared with it. */
+export interface DraftBase { revision: number; title: string; content: RichDoc; folderId: string | null; pinned: boolean }
+export const draftBase = (note: Note): DraftBase => ({
+  revision: note.revision, title: note.title, content: note.content, folderId: note.folderId, pinned: note.pinned,
+})
+
+const LIST_TYPES = new Set(['bulletList', 'orderedList', 'taskList'])
+const sameJson = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
+/**
+ * The blocks another writer added after `base`, if adding to the end is all
+ * it did. Items may have joined a list that ended the note, exactly as the
+ * Host appends, and a blank note is replaced.
+ */
+export function appendedBlocks(base: RichDoc, remote: RichDoc): RichNode[] | null {
+  const before = base.content ?? [], after = remote.content ?? []
+  if (before.length === 1 && before[0]!.type === 'paragraph' && !before[0]!.content?.length) return [...after]
+  if (!before.length || after.length < before.length) return null
+  for (let index = 0; index < before.length - 1; index++) if (!sameJson(before[index], after[index])) return null
+  const last = before.at(-1)!, joined = after[before.length - 1]!
+  if (sameJson(last, joined)) return after.slice(before.length)
+  if (!LIST_TYPES.has(last.type) || joined.type !== last.type || !sameJson(last.attrs ?? null, joined.attrs ?? null)) return null
+  const items = last.content ?? [], extended = joined.content ?? []
+  if (extended.length <= items.length || !items.every((item, index) => sameJson(item, extended[index]))) return null
+  return [{ ...joined, content: extended.slice(items.length) }, ...after.slice(before.length)]
+}
+
+/**
+ * Fold a remote change into unsaved writing when it cannot conflict: content
+ * only added at the end, and title, folder or pin changed only on one side.
+ * The result is the draft on top of the remote revision, still unsaved.
+ */
+export function mergeRemoteChange(draft: NoteDraft, base: DraftBase | undefined, remote: Note): { draft: NoteDraft; appended: boolean } | null {
+  if (!draft.dirty || !base || base.revision !== draft.baseRevision || remote.deletedAt !== null || remote.revision <= draft.baseRevision) return null
+  const appended = appendedBlocks(base.content, remote.content)
+  if (!appended) return null
+  const choose = <T>(local: T, original: T, latest: T): { value: T } | null =>
+    latest === original ? { value: local } : local === original ? { value: latest } : null
+  const title = choose(draft.title, base.title, remote.title)
+  const folderId = choose(draft.folderId, base.folderId, remote.folderId)
+  const pinned = choose(draft.pinned, base.pinned, remote.pinned)
+  if (!title || !folderId || !pinned) return null
+  // The editor keeps an empty paragraph after a final image, list or table; added content goes before it.
+  const local = (draft.content.content ?? []) as StoredNode[]
+  const last = local.at(-1)
+  const trailing = local.length > 1 && last?.type === 'paragraph' && !last.content?.length ? local.slice(-1) : []
+  const content = appended.length
+    ? { type: 'doc' as const, content: [...appendBlocks(trailing.length ? local.slice(0, -1) : local, appended as StoredNode[]), ...trailing] as RichNode[] }
+    : draft.content
+  return { appended: appended.length > 0, draft: { ...draft, title: title.value, folderId: folderId.value, pinned: pinned.value, content, baseRevision: remote.revision } }
 }
 
 /** A response to an older save advances the revision without swallowing newer keystrokes. */

@@ -28,11 +28,20 @@ const BY_CODE: Record<string, Copy> = {
   ATTACHMENT_OPEN_CANCELLED: ['已取消打开附件。', 'Opening was cancelled.'],
   ATTACHMENT_PREVIEW_FAILED: ['附件预览没能准备好，请下载后查看。', 'The preview could not be prepared. Download the file instead.'],
   INVALID_EXPORT_FORMAT: ['请选择 TXT、Markdown、PDF 或 Word。', 'Choose TXT, Markdown, PDF or Word.'],
+  IMPORT_TOO_LARGE: ['导入内容超过 200 MiB，请分批导入。', 'The import is over 200 MiB. Import it in parts.'],
 }
 
 /** Messages more specific than their code's generic sentence. */
 const BEFORE_CODE: Array<[RegExp, Copy]> = [
   [/no agent edit to undo/iu, ['这一版已经不是 AI 修改后的版本，无法撤销。', 'This is no longer the AI-edited version, so it cannot be undone.']],
+  [/no Markdown or text files to import/iu, ['这里没有可以导入的 Markdown 或文本文件。', 'There are no Markdown or text files to import here.']],
+  [/not a readable ZIP/iu, ['这个文件不是有效的 ZIP 压缩包。', 'This file is not a readable ZIP archive.']],
+  [/holds more than|expands beyond/iu, ['压缩包里的文件太多或太大，请分批导入。', 'The archive holds too many or too large files. Import it in parts.']],
+  [/Import at most \d[\d,]* notes/iu, ['一次最多导入 2000 篇笔记，请分批导入。', 'Import at most 2,000 notes at once. Import them in parts.']],
+  [/holds at most [\d,]+ notes/iu, ['随记最多保存 10000 篇笔记（含回收站），请先清空回收站。', 'Jot holds at most 10,000 notes, including Trash. Empty Trash first.']],
+  [/newer Jot/iu, ['这个压缩包来自更新版本的随记，请先升级再导入。', 'This archive comes from a newer Jot. Update Jot before importing it.']],
+  [/library file in this archive/iu, ['压缩包里的随记数据已损坏，无法导入。', 'The Jot data in this archive is damaged and cannot be imported.']],
+  [/Notes storage has reached its size limit/iu, ['笔记库已达到 32 MiB 上限，请先清空回收站或删除不需要的笔记。', 'The notes library has reached its 32 MiB limit. Empty Trash or delete notes you no longer need.']],
 ]
 
 /** Some INVALID_INPUT messages carry a limit the user can act on. */

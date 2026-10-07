@@ -5,6 +5,7 @@ import { boundedString, documentAttachmentIds, MAX_DOC_BYTES, MAX_TITLE_LENGTH, 
 import { AttachmentStore, validateAttachmentId } from './attachments.js'
 import type { AttachmentActions } from './attachment-actions.js'
 import { EXPORT_FORMATS, exportJotLibrary, exportJotNote, LIBRARY_EXPORT_FORMATS, type ExportFormat, type LibraryExportFormat } from './exports.js'
+import { importArchive, MAX_IMPORT_BYTES } from './imports.js'
 
 export const JOT_API_PATH = '/jot/api'
 // The request must carry a maximum-size rich document plus bounded note metadata.
@@ -86,14 +87,20 @@ async function readJson(request: IncomingMessage): Promise<Record<string, unknow
   return body as Record<string, unknown>
 }
 
-async function readAttachment(request: IncomingMessage, maximum: number): Promise<Buffer> {
-  if (header(request, 'content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'application/octet-stream') {
-    throw new HttpError('CONTENT_TYPE', 'Upload attachment bytes as application/octet-stream.', 415)
+interface BinaryBody { mediaType: string; wrongType: string; tooLarge: [code: string, message: string] }
+const ATTACHMENT_BODY: BinaryBody = { mediaType: 'application/octet-stream', wrongType: 'Upload attachment bytes as application/octet-stream.',
+  tooLarge: ['ATTACHMENT_TOO_LARGE', 'This attachment exceeds the file size limit.'] }
+const IMPORT_BODY: BinaryBody = { mediaType: 'application/zip', wrongType: 'Upload notes to import as one application/zip archive.',
+  tooLarge: ['IMPORT_TOO_LARGE', 'Import at most 200 MiB at once.'] }
+
+async function readBinary(request: IncomingMessage, maximum: number, body: BinaryBody): Promise<Buffer> {
+  if (header(request, 'content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== body.mediaType) {
+    throw new HttpError('CONTENT_TYPE', body.wrongType, 415)
   }
   const length = header(request, 'content-length')
   if (length !== undefined && (!/^\d+$/u.test(length) || !Number.isSafeInteger(Number(length)) || Number(length) > maximum)) {
     request.resume()
-    throw new HttpError('ATTACHMENT_TOO_LARGE', 'This attachment exceeds the file size limit.', 413)
+    throw new HttpError(body.tooLarge[0], body.tooLarge[1], 413)
   }
   const chunks: Buffer[] = []
   let size = 0
@@ -102,7 +109,7 @@ async function readAttachment(request: IncomingMessage, maximum: number): Promis
     size += bytes.length
     if (size > maximum) {
       request.resume()
-      throw new HttpError('ATTACHMENT_TOO_LARGE', 'This attachment exceeds the file size limit.', 413)
+      throw new HttpError(body.tooLarge[0], body.tooLarge[1], 413)
     }
     chunks.push(bytes)
   }
@@ -261,12 +268,16 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
         })
         sendFile(response, exported, { 'x-jot-export-notes': String(exported.notes), 'x-jot-export-attachments': String(exported.attachments) })
         return
+      } else if (method === 'POST' && path === '/import') {
+        // Notes, folders and their files arrive as one ZIP: a Jot library export or packed Markdown files.
+        const archive = await readBinary(request, MAX_IMPORT_BYTES, IMPORT_BODY)
+        data = await importArchive(archive, { store, attachments, verify: verifyAttachments, locale: url.searchParams.get('locale') === 'en' ? 'en' : 'zh' })
       } else if (method === 'POST' && path === '/attachments') {
         const encodedName = header(request, 'x-jot-filename')
         if (!encodedName) throw new HttpError('INVALID_ATTACHMENT', 'An attachment file name is required.', 400)
         let name: string
         try { name = decodeURIComponent(encodedName) } catch { throw new HttpError('INVALID_ATTACHMENT', 'The attachment file name is invalid.', 400) }
-        const bytes = await readAttachment(request, attachments.maxFileBytes)
+        const bytes = await readBinary(request, attachments.maxFileBytes, ATTACHMENT_BODY)
         data = await attachments.upload({ name, mimeType: header(request, 'x-jot-mime-type'), bytes })
         status = 201
       } else if (/^\/attachments\/[^/]+(?:\/content)?$/u.test(path)) {
@@ -295,14 +306,15 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
         } else throw new HttpError('METHOD_NOT_ALLOWED', 'Unsupported attachment operation.', 405)
       } else if (method === 'GET' && path === '/state') {
         // Polling clients send the previous tag; an unchanged library costs no body or client render.
+        // Clients that ask for changes get only the notes that differ from the version they hold.
         const previous = header(request, 'if-none-match')
-        const result = await store.readSnapshot(previous)
-        if (!result.snapshot) {
+        const result = await store.readSnapshot(previous, { delta: header(request, 'x-jot-state-delta') === '1' })
+        if (!result.snapshot && !result.delta) {
           response.writeHead(304, { etag: result.tag, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
           response.end()
           return
         }
-        if (!response.destroyed) reply(response, 200, { data: result.snapshot }, { etag: result.tag })
+        if (!response.destroyed) reply(response, 200, result.delta ? { delta: result.delta } : { data: result.snapshot }, { etag: result.tag })
         return
       } else if (method === 'POST' && path === '/trash/empty') {
         const body = await readJson(request)

@@ -360,6 +360,15 @@ export class AttachmentStore {
   }
 
   async upload(input: { name: string; mimeType?: string; bytes: Uint8Array }): Promise<AttachmentInfo> {
+    return (await this.save(input, false)).attachment
+  }
+
+  /** Imports reuse an identical stored file with the same name instead of keeping a second copy. */
+  async uploadOrReuse(input: { name: string; mimeType?: string; bytes: Uint8Array }): Promise<{ attachment: AttachmentInfo; created: boolean }> {
+    return this.save(input, true)
+  }
+
+  private async save(input: { name: string; mimeType?: string; bytes: Uint8Array }, reuse: boolean): Promise<{ attachment: AttachmentInfo; created: boolean }> {
     if (!input || typeof input !== 'object') invalid('An attachment is required.')
     const name = validateAttachmentName(input.name)
     if (!(input.bytes instanceof Uint8Array)) invalid('Attachment bytes are required.')
@@ -374,12 +383,16 @@ export class AttachmentStore {
     let committed = false
     try {
       const previous = await this.load()
+      const hash = sha256(bytes)
+      const existing = reuse ? previous.attachments.find(item => item.sha256 === hash && item.size === bytes.length
+        && item.name === name && item.mimeType === media.mimeType) : undefined
+      if (existing) return { attachment: info(existing), created: false }
       const total = previous.attachments.reduce((sum, item) => sum + item.size, 0)
       if (previous.attachments.length >= this.maxAttachments || total + bytes.length > this.maxTotalBytes) {
         throw new AttachmentError('ATTACHMENT_QUOTA', 'Attachment storage has reached its limit.', 413)
       }
       const id = randomBytes(16).toString('hex')
-      const entry: AttachmentMetadata = { id, name, ...media, size: bytes.length, createdAt: new Date().toISOString(), sha256: sha256(bytes) }
+      const entry: AttachmentMetadata = { id, name, ...media, size: bytes.length, createdAt: new Date().toISOString(), sha256: hash }
       const manifest: Manifest = { version: 1, attachments: [...previous.attachments, entry] }
       const index = Buffer.from(JSON.stringify(manifest) + '\n', 'utf8')
       if (index.length > MAX_MANIFEST_BYTES) throw new AttachmentError('ATTACHMENT_QUOTA', 'Attachment storage has reached its index limit.', 413)
@@ -392,7 +405,7 @@ export class AttachmentStore {
       await this.writeSynced(indexTemporary, index)
       await rename(indexTemporary, this.manifestPath)
       committed = true
-      return info(entry)
+      return { attachment: info(entry), created: true }
     } catch (cause) {
       if (cause instanceof AttachmentError) throw cause
       throw new AttachmentError('ATTACHMENT_PERSISTENCE', 'The attachment could not be saved.', 500, { cause })
