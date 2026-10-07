@@ -18,7 +18,7 @@
 
 ![Jot full workbench in the actual DSH Host, showing notes, checklists, tables, colors and highlights in English](./assets/readme/workbench-en.jpg)
 
-> **In development (not yet released):** import Markdown files, whole folders or a ZIP exported from Jot; when AI changes a few words it changes only those words, keeping formatting; text AI adds to the end while you are writing joins your draft. Released changes are in the [changelog](./CHANGELOG.md).
+> **In development (not yet released):** import Markdown files, whole folders or a ZIP exported from Jot; when AI changes a few words it changes only those words, keeping formatting; text AI adds to the end while you are writing joins your draft when it can be merged safely. Released changes are in the [changelog](./CHANGELOG.md).
 
 ## Why Jot
 
@@ -60,7 +60,7 @@ Restart DSH and **Jot** appears in the left navigation; press **New** to start w
 
 **Nothing gets lost**
 
-- Autosave and recovery drafts. Text added to the end elsewhere while you write joins your draft; only a real conflict keeps your writing aside for you to choose. Deleting notes, one or many at a time, can be undone; permanent deletion asks first.
+- Autosave and recovery drafts. Safe additions from elsewhere join your draft once; divergent or uncertain additions keep your writing aside for you to choose. Deleting notes, one or many at a time, can be undone; permanent deletion asks first.
 - Export a note to Word, PDF, Markdown or TXT, or package every note or one folder into a single ZIP with PNG/JPEG images embedded in Word and PDF. The ZIP carries the complete notes, so **Import notes** restores it exactly; it doubles as a backup.
 
 ![Jot compact right-sidebar tab beside a conversation in the actual DSH Host, showing the English interface](./assets/readme/sidebar-en.jpg)
@@ -105,7 +105,7 @@ Press `?` inside Jot to see every shortcut. The common ones:
 
 **Can I move in from Obsidian or other Markdown notes?** Yes. Choose **Import notes** under **Sort and options** in the list, then pick the whole vault folder. Titles come from a leading level-1 heading or the file name, images and files come along, and notes identical to ones already in Jot are skipped, so importing twice adds nothing.
 
-**Why does an action mention “kept drafts”?** Another panel has unsaved changes to that note, and the two sides changed more than adding to the end. Open it and load the latest version or save the draft as a new note first, so neither side's writing is lost.
+**Why does an action mention “kept drafts”?** Another panel has unsaved changes to that note, and the two sides cannot be merged safely. Open it and load the latest version or save the draft as a new note first, so neither side's writing is lost.
 
 ## Compatibility
 

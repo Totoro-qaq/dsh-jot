@@ -174,3 +174,25 @@ test('the client packs picked notes with only the files they use, and passes a Z
   assert.ok(![...references.paths].some(path => path.includes('x.test')))
   t.diagnostic('packing reads only the files the notes use')
 })
+
+test('folder import keeps referenced ZIP attachments and ignores unused or hidden archives', async t => {
+  const target = await library(t)
+  const attachment = zipSync({ 'inside.md': strToU8('This is an attachment, not another note') })
+  const unread = (path: string): ImportFile => ({
+    ...picked(path, attachment), read: async () => { throw new Error(`Must not read ${path}`) },
+  })
+  const blob = await packImport([
+    picked('Vault/Note.md', '# Note\n\n[Data](files/data.zip)'),
+    picked('Vault/files/data.zip', attachment),
+    unread('Vault/unused.zip'), unread('Vault/.obsidian/backup.zip'), unread('Vault/__MACOSX/backup.zip'),
+  ])
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  assert.deepEqual(Object.keys(unzipSync(bytes)).sort(), ['.jot-import.json', 'Vault/Note.md', 'Vault/files/data.zip'])
+  const result = await target.run(bytes)
+  assert.deepEqual([result.notes, result.attachments], [1, 1])
+  const [note] = (await target.store.readState()).notes
+  const [id] = documentAttachmentIds(note!.content)
+  assert.deepEqual((await target.attachments.content(id!)).bytes, Buffer.from(attachment))
+  await assert.rejects(packImport([unread('Vault/backup.zip')]),
+    (error: unknown) => error instanceof ImportPackError && error.problem === 'empty')
+})

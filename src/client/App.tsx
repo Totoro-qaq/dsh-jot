@@ -197,8 +197,10 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     const { title, content, folderId, pinned, baseRevision } = merged.draft
     installDraft({ ...editDraft(current, { title, content, folderId, pinned }), baseRevision })
     setStatus(current.noteId, { phase: 'dirty' })
-    showToast(merged.appended ? copy('别处追加的内容已合并到你的草稿末尾', 'Content added elsewhere was merged at the end of your draft')
-      : copy('别处修改的标题、文件夹或置顶已同步', 'A title, folder or pin change from elsewhere was applied'))
+    if (draftFingerprint(current) !== draftFingerprint(merged.draft)) {
+      showToast(merged.appended ? copy('别处追加的内容已合并到你的草稿末尾', 'Content added elsewhere was merged at the end of your draft')
+        : copy('别处修改的标题、文件夹或置顶已同步', 'A title, folder or pin change from elsewhere was applied'))
+    }
     return true
   }, [installDraft, setStatus, showToast, locale])
 

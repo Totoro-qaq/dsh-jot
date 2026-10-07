@@ -1,4 +1,4 @@
-import { appendBlocks, type RichNode as StoredNode } from '../model.js'
+import { appendBlocks, documentIsBlank, validateRichDoc, type RichDoc as StoredDoc, type RichNode as StoredNode } from '../model.js'
 import type { Note, RichDoc, RichNode } from './types.js'
 
 export interface NoteDraft {
@@ -62,6 +62,7 @@ const sameJson = (left: unknown, right: unknown) => JSON.stringify(left) === JSO
  */
 export function appendedBlocks(base: RichDoc, remote: RichDoc): RichNode[] | null {
   const before = base.content ?? [], after = remote.content ?? []
+  if (sameJson(before, after)) return []
   if (before.length === 1 && before[0]!.type === 'paragraph' && !before[0]!.content?.length) return [...after]
   if (!before.length || after.length < before.length) return null
   for (let index = 0; index < before.length - 1; index++) if (!sameJson(before[index], after[index])) return null
@@ -73,29 +74,57 @@ export function appendedBlocks(base: RichDoc, remote: RichDoc): RichNode[] | nul
   return [{ ...joined, content: extended.slice(items.length) }, ...after.slice(before.length)]
 }
 
+/** Text/format edits within existing blocks cannot already contain added blocks or list items. */
+function sameBlockStructure(before: readonly RichNode[], after: readonly RichNode[]): boolean {
+  return before.length === after.length && before.every((node, index) => {
+    const next = after[index]!
+    return node.type === next.type && (['paragraph', 'heading', 'codeBlock'].includes(node.type)
+      || sameBlockStructure(node.content ?? [], next.content ?? []))
+  })
+}
+
 /**
- * Fold a remote change into unsaved writing when it cannot conflict: content
- * only added at the end, and title, folder or pin changed only on one side.
+ * Fold a remote append into existing-block edits or a matching append history.
+ * Divergent additions keep their conflict; metadata may change on only one side
+ * or converge on the same value.
  * The result is the draft on top of the remote revision, still unsaved.
  */
 export function mergeRemoteChange(draft: NoteDraft, base: DraftBase | undefined, remote: Note): { draft: NoteDraft; appended: boolean } | null {
   if (!draft.dirty || !base || base.revision !== draft.baseRevision || remote.deletedAt !== null || remote.revision <= draft.baseRevision) return null
-  const appended = appendedBlocks(base.content, remote.content)
+  // Ignore the editor's final empty paragraph when comparing saved append histories,
+  // but retain it in the visible draft. Canonicalize schema defaults/property order.
+  const local = (draft.content.content ?? []) as StoredNode[]
+  const last = local.at(-1)
+  const trailing = local.length > 1 && last?.type === 'paragraph' && !last.content?.length ? local.slice(-1) : []
+  let original: StoredDoc, current: StoredDoc, latest: StoredDoc
+  try {
+    original = validateRichDoc(base.content)
+    current = validateRichDoc({ type: 'doc', content: trailing.length ? local.slice(0, -1) : local })
+    latest = validateRichDoc(remote.content)
+  } catch { return null } // An invalid unsaved document stays available for human recovery.
+  const appended = appendedBlocks(original, latest)
   if (!appended) return null
   const choose = <T>(local: T, original: T, latest: T): { value: T } | null =>
-    latest === original ? { value: local } : local === original ? { value: latest } : null
+    latest === original || local === latest ? { value: local } : local === original ? { value: latest } : null
   const title = choose(draft.title, base.title, remote.title)
   const folderId = choose(draft.folderId, base.folderId, remote.folderId)
   const pinned = choose(draft.pinned, base.pinned, remote.pinned)
   if (!title || !folderId || !pinned) return null
-  // The editor keeps an empty paragraph after a final image, list or table; added content goes before it.
-  const local = (draft.content.content ?? []) as StoredNode[]
-  const last = local.at(-1)
-  const trailing = local.length > 1 && last?.type === 'paragraph' && !last.content?.length ? local.slice(-1) : []
-  const content = appended.length
-    ? { type: 'doc' as const, content: [...appendBlocks(trailing.length ? local.slice(0, -1) : local, appended as StoredNode[]), ...trailing] as RichNode[] }
-    : draft.content
-  return { appended: appended.length > 0, draft: { ...draft, title: title.value, folderId: folderId.value, pinned: pinned.value, content, baseRevision: remote.revision } }
+  let content = draft.content
+  // A second panel may have saved this very draft while typing continued here.
+  // A remote prefix is already present; a local prefix needs only the remote extension.
+  if (appended.length && appendedBlocks(latest, current) === null) {
+    if (appendedBlocks(original, current) !== null) {
+      if (appendedBlocks(current, latest) === null) return null
+      content = { type: 'doc', content: [...latest.content, ...trailing] }
+    } else {
+      // Competing additions/deletions cannot be distinguished from a shared draft
+      // edited after the other panel saved. Keep those conflicts for the human.
+      if (documentIsBlank(original) || !sameBlockStructure(original.content, current.content)) return null
+      content = { type: 'doc', content: [...appendBlocks(current.content, appended as StoredNode[]), ...trailing] }
+    }
+  }
+  return { appended: content !== draft.content, draft: { ...draft, title: title.value, folderId: folderId.value, pinned: pinned.value, content, baseRevision: remote.revision } }
 }
 
 /** A response to an older save advances the revision without swallowing newer keystrokes. */

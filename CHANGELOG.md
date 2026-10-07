@@ -17,12 +17,17 @@
 
 ### Syncing
 
-- When content is only added to the end of the note you are typing in (an AI append, for example), or only its title, folder or pin changed where you did not, the change joins your unsaved draft instead of raising a conflict. The caret stays put and Undo does not take back the other change.
+- Remote appends merge into edits within existing blocks or a shared append history, without repeating content another panel already saved. Divergent additions remain a conflict. Title, folder and pin changes merge when they do not conflict. The caret stays put and Undo does not take back the other change.
 - An unchanged poll is answered from file identities without taking the lock or reading the notes file, and a changed library is sent as the notes that changed. Saving no longer downloads the whole library again.
+
+### Review fixes
+
+- Prevent duplicate content when two panels hold the same appended draft; keep ambiguous overlapping additions for human resolution.
+- Treat ZIPs inside a selected folder as ordinary attachments, and ignore unreferenced or hidden ZIP backups. Standalone ZIP selection still imports one archive at a time.
 
 ### Verification
 
-Local `pnpm check` passed **340 tests**, typecheck and Host/Client builds; packaging checks passed. The import dialog, folder and backup imports, merging an append while typing, and change-only polling were checked in the local `pnpm dev` preview only, not yet in DSH Web or Desktop. Tool registration that follows the switch is covered by tests against a fake registry; whether DSH drops removed tools from an ongoing conversation still needs a real host.
+Local `pnpm check` passed **344 tests**, typecheck and Host/Client builds; packaging checks passed. The import dialog, folder and backup imports, merging an append while typing, and change-only polling were checked in the local `pnpm dev` preview only, not yet in DSH Web or Desktop. Tool registration that follows the switch is covered by tests against a fake registry; whether DSH drops removed tools from an ongoing conversation still needs a real host.
 
 ## 0.2.6 — 2026-10-05
 

@@ -167,7 +167,7 @@ One export holds at most 2,000 notes, or 500 as PDF because each PDF embeds its 
 - When you pick a folder, that folder itself does not become a Jot folder, but its subfolders do; nested subfolders join into one name such as “Work / Meetings”. A name that matches an existing folder goes into that folder.
 - Images and files the notes use are found by path relative to the note, from the top of the picked folder, or by name, and are stored with the notes; picked files that no note uses are not uploaded. An image that cannot be found keeps its original Markdown, and the summary after importing counts them.
 - Notes with the same title and content as an existing note are skipped, and identical attachments are not stored twice, so importing the same backup again adds nothing.
-- Hidden files and folders such as `.obsidian` and `.git` are ignored.
+- Hidden files and folders such as `.obsidian` and `.git` are ignored. ZIPs inside a picked folder are attachments: only referenced ZIPs are included, without importing their contents. A ZIP picked on its own is treated as an import archive.
 
 One import holds at most 2,000 notes and 200 MiB of uploads; a Markdown file may be up to 4 MiB, and each attachment keeps its 20 MiB limit. Readable notes are written in one save: if that save fails, no note is kept and uploaded attachments are removed again. Files too large or impossible to convert are skipped and counted in the summary. A ZIP made by another tool may show garbled names if it does not store them as UTF-8 (Windows' built-in compression on a Chinese system, for example); import the folder instead.
 
@@ -211,7 +211,7 @@ A note is limited to 1 MiB and 200,000 JavaScript string units of text; the whol
 
 Damaged or unknown data is refused rather than replaced with an empty library, and the original files are kept. If a crash leaves a lock behind, confirm that its process has ended before removing the lock; never clear the notes file to resolve a lock. File replacement is atomic, but the latest save is not guaranteed to survive a power loss.
 
-When another panel or the agent changes the note you are editing and only added to the end (AI adding a few to-dos, for example), or changed only a title, folder or pin you left alone, the change joins your draft: the caret stays put, and Undo never takes back the other change. Otherwise Jot says “This note has a newer version. Your draft is still here.” You can load the latest version or save your draft as a new note.
+When another panel or the agent adds to the end while you edit existing blocks, or changes only a title, folder or pin you left alone, a safe change joins your draft: the caret stays put, and Undo never takes back the other change. A shared append already saved by another panel is kept once, including when you have continued adding blocks. Divergent additions or uncertain overlap remain a conflict. Otherwise Jot says “This note has a newer version. Your draft is still here.” You can load the latest version or save your draft as a new note.
 
 ## Validation and limits
 

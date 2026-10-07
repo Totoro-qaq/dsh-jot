@@ -62,15 +62,16 @@ export function noteReferences(path: string, text: string): { paths: Set<string>
  * file's date so imported notes keep their order.
  */
 export async function packImport(files: readonly ImportFile[]): Promise<Blob> {
-  const archives = files.filter(file => ARCHIVE.test(file.path))
+  // Folder picks have relative paths. ZIPs inside them are ordinary attachments,
+  // including backup files that must be ignored along with their hidden folder.
+  const visible = files.filter(file => !file.path.split('/').some(part => part.startsWith('.') || part === '__MACOSX'))
+  const archives = visible.filter(file => !file.path.includes('/') && ARCHIVE.test(file.path))
   if (archives.length) {
-    if (files.length > 1) throw new ImportPackError('mixed-archive')
+    if (visible.length > 1) throw new ImportPackError('mixed-archive')
     const [archive] = archives as [ImportFile]
     if (archive.size > MAX_IMPORT_BYTES) throw new ImportPackError('too-large')
     return archive.blob ?? new Blob([await archive.read() as Uint8Array<ArrayBuffer>], { type: 'application/zip' })
   }
-  // Hidden files and app folders such as .obsidian are never part of an import.
-  const visible = files.filter(file => !file.path.split('/').some(part => part.startsWith('.') || part === '__MACOSX'))
   const notes = visible.filter(file => NOTE_FILE.test(file.path))
   if (!notes.length) throw new ImportPackError('empty')
   const entries: Zippable = {}
