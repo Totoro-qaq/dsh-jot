@@ -154,9 +154,22 @@ Single-note exports use the current draft; saving first is not required. Each ex
 | PDF | Fixed layout for reading, printing and sharing |
 | Markdown | Plain text for Obsidian and other note apps; images link to the attachments folder |
 
-The ZIP holds one file per note in a directory per folder, with unfiled notes at the top level. Notes with the same name get “(2)” and so on; untitled notes are named after their first line. Every referenced file is included once, as the original, in `attachments/` (`附件/` in the Chinese interface), so GIF, WebP and other files that Word or PDF cannot embed are kept. The note you are editing is saved before exporting.
+The ZIP holds one file per note in a directory per folder, with unfiled notes at the top level. Notes with the same name get “(2)” and so on; untitled notes are named after their first line. Every referenced file is included once, as the original, in `attachments/` (`附件/` in the Chinese interface), so GIF, WebP and other files that Word or PDF cannot embed are kept. The note you are editing is saved before exporting. The top of the ZIP also holds `jot-library.json`, with each note's complete content (colors and table widths included), folder, pin and dates, so **Import notes** restores it exactly; Word and PDF exports work the same way.
 
 One export holds at most 2,000 notes, or 500 as PDF because each PDF embeds its own Chinese font. Attachment bytes, the accumulated generated-entry budget (including ZIP overhead), and the final file are each limited to 200 MiB. For more, export one folder at a time or choose Word.
+
+### Importing notes
+
+**Sort and options → Import notes…** accepts files or a whole folder; an empty library also offers **Import existing notes…** in the list.
+
+- **A ZIP exported from Jot** is restored exactly from its `jot-library.json`: content, folders, pins, dates and attachments, from Word, PDF and Markdown exports alike.
+- **Markdown (.md, .markdown) and text (.txt) files** become one note each. Markdown is converted [the same way as for agents](#working-with-an-agent), and also understands Obsidian's `[[links]]`, `![[embeds]]` and `==highlights==`. YAML properties at the top are removed; a leading level-1 heading (or a `title` property) becomes the note title, otherwise the file name does. Text files keep every line as a paragraph.
+- When you pick a folder, that folder itself does not become a Jot folder, but its subfolders do; nested subfolders join into one name such as “Work / Meetings”. A name that matches an existing folder goes into that folder.
+- Images and files the notes use are found by path relative to the note, from the top of the picked folder, or by name, and are stored with the notes; picked files that no note uses are not uploaded. An image that cannot be found keeps its original Markdown, and the summary after importing counts them.
+- Notes with the same title and content as an existing note are skipped, and identical attachments are not stored twice, so importing the same backup again adds nothing.
+- Hidden files and folders such as `.obsidian` and `.git` are ignored.
+
+One import holds at most 2,000 notes and 200 MiB of uploads; a Markdown file may be up to 4 MiB, and each attachment keeps its 20 MiB limit. Readable notes are written in one save: if that save fails, no note is kept and uploaded attachments are removed again. Files too large or impossible to convert are skipped and counted in the summary. A ZIP made by another tool may show garbled names if it does not store them as UTF-8 (Windows' built-in compression on a Chinese system, for example); import the folder instead.
 
 ## Working with an agent
 
@@ -165,22 +178,23 @@ One export holds at most 2,000 notes, or 500 as PDF because each PDF embeds its 
 | Tool | Purpose |
 | --- | --- |
 | `jot_list` | Search notes; returns bounded summaries and folder names |
-| `jot_read` | Read a note's text, numbered to-do items and current revision |
-| `jot_create` | Create a note; text supports simple Markdown |
-| `jot_update` | Append (preferred), retitle, move to a folder or replace the text, using the current revision |
+| `jot_read` | Read a note as Markdown, with numbered to-do items, the current revision, and formatting Markdown cannot express (`notInMarkdown`) |
+| `jot_create` | Create a note; text supports Markdown |
+| `jot_update` | Find and replace text (preferred for changing words), append, retitle, move to a folder or replace the text, using the current revision |
 | `jot_set_task` | Check or uncheck one numbered to-do item |
 | `jot_delete` | Move a note to Trash |
 
-- Text is converted from simple Markdown by default: `#` headings, `-`/`1.` lists, `- [ ]`/`[x]` to-dos, `>` quotes, ```` ``` ```` code, `---` dividers, `| tables |`, plus `**bold**`, `*italic*`, `` `code` ``, `~~strike~~` and `[links](https://…)`. HTML always stays literal text. With `format: "plain"` every line becomes a plain paragraph.
+- Text is converted from Markdown by default: `#` headings, `-`/`1.` lists (indent two spaces to nest), `- [ ]`/`[x]` to-dos, `>` quotes, ```` ``` ```` code, `---` dividers, `| tables |`, plus `**bold**`, `*italic*`, `~~strike~~`, `==highlight==`, `` `code` `` and `[links](https://…)`. The only HTML read is `<u>`, `<mark>`, colored `<span>`, `<strong>`, `<em>`, `<s>`, `<code>`, `<a href>` and `<br>`, for underline, colors and line breaks; any other tag stays literal text. Images and files are lines of their own, `![description](attachment:id)` or `[description](attachment:id)`, naming an existing attachment. With `format: "plain"` every line becomes a plain paragraph.
+- `jot_read` gives the agent exactly this Markdown, so it sees and keeps headings, lists, bold, links, colors and attachments. To change a few words it uses `edits`: each `{ find, replace }` matches visible text exactly within one paragraph (without markers such as `**` or `#`), and the new text keeps the formatting of the text it replaces. Text that appears more than once needs nearby words, or `all: true` to replace every occurrence. If any edit does not match, none is applied.
 - Appended list or to-do items join a list of the same kind at the end of the note, so “add a to-do” extends the checklist instead of starting another.
-- Replacing the whole text is refused when the note has tables, images, files, colors or underline, so they are not flattened. The agent may retry with `allowFormattingLoss: true` only after you agree.
+- Replacing the whole text (`text`) goes ahead only when the note converts to Markdown and back without losing anything. Formatting Markdown cannot express, such as table column widths or merged cells, is listed in `jot_read`'s `notInMarkdown`, and a whole-text replacement is then refused; the agent may retry with `allowFormattingLoss: true` only after you agree. Replacing a formatted note with `format: "plain"` needs your agreement too.
 - Updates, ticks and deletions require the exact `revision`, so other edits are never overwritten. Every call checks the current switch; the agent cannot turn its own access on.
 - Versions saved by AI are labelled **AI edited** in the list and the editor toolbar until you edit the note. The label is recorded separately in `jot.activity.json`, so older plugin versions still read the notes unchanged.
 - For an existing note with a version from before AI edits, select **AI edited** in the editor toolbar, or choose **Undo AI edits…** under **More note actions**, and confirm to restore it as a new version of yours. Consecutive AI edits count as one run and are undone together; if you edited in between, only the latest run is undone. Only you can undo, including after turning AI collaboration off. Without an earlier version, such as for an AI-created note, only the label is shown. There is no separate AI-edit history or Redo AI edits; the regular backup may still hold the previous state.
 - The version from before AI edits lives in `jot.agent-undo/`, at most one per note, and is removed when you edit, undo or permanently delete the note.
 - With AI collaboration on, notes without an **AI edited** label show a small icon in the editor toolbar as a reminder that AI can read and edit notes when you ask.
 
-The switch controls Jot's tools, not system-level file access. Notes are not automatically added to every model request; explicit reads or searches can include their content in the model's context.
+The switch controls Jot's tools, not system-level file access. While it is off, Jot's tools are not registered with DSH and are not sent with model requests; they are available as soon as you turn it on. When Desktop and Web share a data folder, a switch flipped on one side reaches the other within about 10 seconds. Notes are not automatically added to every model request; explicit reads or searches can include their content in the model's context.
 
 ## Data and conflicts
 
@@ -193,11 +207,11 @@ The default data folder is `$DSH_HOME/jot`, or `~/.dsh/jot` when `DSH_HOME` is u
 - `.jot.lock`: the read/write lock, recording the owner PID.
 - `attachments/`: managed attachment files, `manifest.json` and their lock.
 
-A note is limited to 1 MiB and 200,000 JavaScript string units of text; the whole library to 32 MiB. The interface checks for updates every 3 seconds; when nothing changed the Host answers “not modified”, and checks pause while the window is in the background.
+A note is limited to 1 MiB and 200,000 JavaScript string units of text; the whole library to 32 MiB. The interface checks for updates every 3 seconds: when nothing changed, the Host compares the files without reading the notes and answers “not modified”; when something changed, it sends only the notes that did. Checks pause while the window is in the background.
 
 Damaged or unknown data is refused rather than replaced with an empty library, and the original files are kept. If a crash leaves a lock behind, confirm that its process has ended before removing the lock; never clear the notes file to resolve a lock. File replacement is atomic, but the latest save is not guaranteed to survive a power loss.
 
-When another panel or the agent changes the note you are editing, Jot says “This note has a newer version. Your draft is still here.” You can load the latest version or save your draft as a new note.
+When another panel or the agent changes the note you are editing and only added to the end (AI adding a few to-dos, for example), or changed only a title, folder or pin you left alone, the change joins your draft: the caret stays put, and Undo never takes back the other change. Otherwise Jot says “This note has a newer version. Your draft is still here.” You can load the latest version or save your draft as a new note.
 
 ## Validation and limits
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Import
+
+- **Import notes…** (under **Sort and options**, and in an empty library) adds Markdown (.md, .markdown) and text files, a whole folder such as an Obsidian vault, or a ZIP exported from Jot. Subfolders become folders, titles come from a leading heading or the file name, and the images and files the notes use are stored with them; Obsidian `[[links]]`, `![[embeds]]` and `==highlights==` are understood. Notes identical to existing ones are skipped and identical files are reused, so importing a backup twice adds nothing. One import holds up to 2,000 notes and 200 MiB, and it is written in one save: a failed import keeps no notes and removes its uploaded files.
+- Library exports now carry `jot-library.json`, the exact notes with their folders, pins and dates, so a ZIP in any format restores losslessly. Older exports import from their Markdown files.
+
+### AI collaboration
+
+- `jot_read` returns the note as Markdown instead of plain text, so an agent sees headings, nested lists, bold, links, colors, underline and attachments. Formatting Markdown cannot carry, such as table column widths, is listed in `notInMarkdown`.
+- `jot_update` accepts `edits`: exact find-and-replace inside a paragraph that keeps the surrounding formatting, with `all` for every occurrence. Changing one word no longer means rewriting the note.
+- A whole-text rewrite is refused only when the note's Markdown would not convert back unchanged. Previously a rewrite could silently turn headings, lists, quotes and code into plain paragraphs, drop bold and link addresses, and make a `#` comment in a code block a heading.
+- Agent Markdown supports nested lists, `==highlight==`, `<u>`, colored `<span>`, `<br>` and `![…](attachment:…)` lines for existing files, and CommonMark escapes. `<b>` and the other formatting tags now count as formatting; unknown HTML stays literal.
+- Jot's tools are registered with DSH only while **Allow AI collaboration** is on, so a disabled Jot adds no tool definitions to model requests. A switch flipped in another process sharing the notes folder is noticed within about 10 seconds.
+
+### Syncing
+
+- When content is only added to the end of the note you are typing in (an AI append, for example), or only its title, folder or pin changed where you did not, the change joins your unsaved draft instead of raising a conflict. The caret stays put and Undo does not take back the other change.
+- An unchanged poll is answered from file identities without taking the lock or reading the notes file, and a changed library is sent as the notes that changed. Saving no longer downloads the whole library again.
+
+### Verification
+
+Local `pnpm check` passed **340 tests**, typecheck and Host/Client builds; packaging checks passed. The import dialog, folder and backup imports, merging an append while typing, and change-only polling were checked in the local `pnpm dev` preview only, not yet in DSH Web or Desktop. Tool registration that follows the switch is covered by tests against a fake registry; whether DSH drops removed tools from an ongoing conversation still needs a real host.
+
 ## 0.2.6 — 2026-10-05
 
 ### Writing

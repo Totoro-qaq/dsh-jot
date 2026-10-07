@@ -18,13 +18,13 @@
 
 ![Jot full workbench in the actual DSH Host, showing notes, checklists, tables, colors and highlights in English](./assets/readme/workbench-en.jpg)
 
-> **New in 0.2.6:** type `/` on an empty line to insert headings, checklists and tables; type `/jot` in the chat composer to find a note; export every note to Word, PDF or Markdown; undo AI changes to existing notes in one step. See the [changelog](./CHANGELOG.md) for details.
+> **In development (not yet released):** import Markdown files, whole folders or a ZIP exported from Jot; when AI changes a few words it changes only those words, keeping formatting; text AI adds to the end while you are writing joins your draft. Released changes are in the [changelog](./CHANGELOG.md).
 
 ## Why Jot
 
 | Right beside the conversation | You write, AI helps | Your data stays yours |
 | --- | --- | --- |
-| Open the full workbench from the left navigation, or write in the right sidebar while you chat. `/jot` finds a note from the composer. | AI collaboration starts off. When on, AI reads or edits only when you ask; changed notes are labelled **AI edited** and can be reverted when an earlier version exists. | Notes live in your local DSH data folder with no cloud sync. Export everything to Word, PDF or Markdown at any time. |
+| Open the full workbench from the left navigation, or write in the right sidebar while you chat. `/jot` finds a note from the composer. | AI collaboration starts off. When on, AI reads or edits only when you ask and keeps your formatting; changed notes are labelled **AI edited** and can be reverted when an earlier version exists. | Notes live in your local DSH data folder with no cloud sync. Export everything to Word, PDF or Markdown, and import the ZIP back exactly. |
 
 ## Install
 
@@ -56,11 +56,12 @@ Restart DSH and **Jot** appears in the left navigation; press **New** to start w
 **Collect as you go**
 
 - Capture selected text into a new or the current note; paste screenshots or drop files, previewed in DSH's official viewers for Word, spreadsheets, PDF and images.
+- Move in from a Markdown vault such as Obsidian: import Markdown or TXT files or a whole folder. Subfolders become Jot folders, and the images and files the notes use come along.
 
 **Nothing gets lost**
 
-- Autosave, recovery drafts, and conflicts that keep your writing. Deleting notes, one or many at a time, can be undone; permanent deletion asks first.
-- Export a note to Word, PDF, Markdown or TXT, or package every note or one folder into a single ZIP with PNG/JPEG images embedded in Word and PDF.
+- Autosave and recovery drafts. Text added to the end elsewhere while you write joins your draft; only a real conflict keeps your writing aside for you to choose. Deleting notes, one or many at a time, can be undone; permanent deletion asks first.
+- Export a note to Word, PDF, Markdown or TXT, or package every note or one folder into a single ZIP with PNG/JPEG images embedded in Word and PDF. The ZIP carries the complete notes, so **Import notes** restores it exactly; it doubles as a backup.
 
 ![Jot compact right-sidebar tab beside a conversation in the actual DSH Host, showing the English interface](./assets/readme/sidebar-en.jpg)
 
@@ -72,10 +73,10 @@ Turn on **Allow AI collaboration** at the bottom of the list, then tell the AI w
 >
 > Tick item 2 in *Follow-ups*.
 
-- AI can search, read, create and append to notes, tick a single to-do, or move a note to Trash. Every call checks the switch, and AI cannot turn it on.
-- Replacing a whole note refuses to drop tables, files or colors unless you agree.
+- AI can search, read, create and append to notes, replace specific text, tick a single to-do, or move a note to Trash. Every call checks the switch, and AI cannot turn it on.
+- AI reads notes as formatted Markdown. Changing a few words replaces only those words, keeping headings, lists, bold, links and colors; rewriting a whole note is allowed only when its formatting survives, and AI asks you first about what cannot, such as table column widths.
 - Notes changed by AI are labelled **AI edited**. When an existing note has a version from before AI edits, select the label to restore it; consecutive AI edits are undone together. Notes created by AI show the label without this undo action.
-- Notes are never added to each conversation turn automatically; AI reads them only through its tools.
+- Notes are never added to each conversation turn automatically; AI reads them only through its tools, and with AI collaboration off, Jot's tools are not offered to the conversation at all.
 
 See the [guide](./docs/GUIDE.en.md#working-with-an-agent) for the tools and the Markdown they accept.
 
@@ -100,9 +101,11 @@ Press `?` inside Jot to see every shortcut. The common ones:
 
 **Will uninstalling or upgrading lose notes?** No. Notes live in the DSH data folder, separate from the plugin package, and older versions can still read notes saved by newer ones.
 
-**Where are notes stored, and how do I back them up?** In `$DSH_HOME/jot` (`~/.dsh/jot` when unset); back up the whole folder. Desktop and Web share notes when they use the same data folder. Attachments default to 20 MiB each and 500 MiB in total.
+**Where are notes stored, and how do I back them up?** In `$DSH_HOME/jot` (`~/.dsh/jot` when unset); back up the whole folder, or use **Export all notes** for one ZIP that **Import notes** restores exactly. Desktop and Web share notes when they use the same data folder. Attachments default to 20 MiB each and 500 MiB in total.
 
-**Why does an action mention “kept drafts”?** Another panel has unsaved changes to that note. Open it and load the latest version or save the draft as a new note first, so neither side's writing is lost.
+**Can I move in from Obsidian or other Markdown notes?** Yes. Choose **Import notes** under **Sort and options** in the list, then pick the whole vault folder. Titles come from a leading level-1 heading or the file name, images and files come along, and notes identical to ones already in Jot are skipped, so importing twice adds nothing.
+
+**Why does an action mention “kept drafts”?** Another panel has unsaved changes to that note, and the two sides changed more than adding to the end. Open it and load the latest version or save the draft as a new note first, so neither side's writing is lost.
 
 ## Compatibility
 
@@ -112,7 +115,7 @@ See [the proposed OMDSH author declaration](./docs/community/omdsh-intake.md) fo
 
 ## More
 
-- [Guide](./docs/GUIDE.en.md): attachment and export limits, AI tool details, backups and conflicts.
+- [Guide](./docs/GUIDE.en.md): importing, attachment and export limits, AI tool details, backups and conflicts.
 - [Product scope](./PRODUCT.md): product decisions, implemented features and future directions.
 - [GitHub Releases](https://github.com/Totoro-qaq/dsh-jot/releases) · [npm](https://www.npmjs.com/package/dsh-jot) · [Report an issue](https://github.com/Totoro-qaq/dsh-jot/issues)
 
