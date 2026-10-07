@@ -1,6 +1,6 @@
 {
   "name": "dsh-jot",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Human-editable notes, todos and documents for DeepSeek Harness, with search, tables, attachments, export and optional agent collaboration.",
   "type": "module",
   "license": "MIT",

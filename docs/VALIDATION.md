@@ -2,6 +2,10 @@
 
 Dates: 2026-10-02 through 2026-10-07 (Asia/Shanghai). Each section applies only to the version it names.
 
+## 0.2.8 — documentation and package contents
+
+Checked 2026-10-07 against source commit `17386b45d79531cda74512e60ccea0fbb5fd286c`. Only documentation and package contents changed after 0.2.7. The built Host (`bdb40a93eda994ebe59207723176dc16680829be6c28662d0f1ed8ac4fb49664`) and Client (`8e3d33038f992389eec096324b3c6ad7a8bf9fb4b81cebd4f33a5e6b1fb365fc`) bundles are byte-identical to those in the published 0.2.7 package, so the 0.2.7 Host checks below still describe the runtime. The package no longer contains the README screenshots in `assets/readme/*.jpg`; the README loads its demo GIF from GitHub.
+
 ## 0.2.7 — live tool removal and import acceptance
 
 Verified 2026-10-07 against source commit `40f384154227978c14a28396b244c7a9bc25f742`, after the shared-draft and folder-ZIP fixes. The acceptance candidate declared `0.2.6`; release preparation changes its package version to `0.2.7` without changing the tested Host/Client bundles. The frozen installation archive SHA-256 is `97afdbcad0f0b1bd839836b40716800212d781bdd2d1db020706b14a4b906319`.
