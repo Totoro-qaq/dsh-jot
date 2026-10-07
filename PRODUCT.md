@@ -8,7 +8,7 @@ product
 
 web
 
-Shared DSH Web UI and official Desktop, compatible with DSH 0.2.0-rc.2 and 0.2.1-alpha.1. Version 0.2.7 uses the current public command and shortcut APIs; the actual alpha.1 Web checks and separate rc.2 Desktop results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
+Shared DSH Web UI and official Desktop, compatible with DSH 0.2.0-rc.2 and 0.2.1-alpha.1. Version 0.2.8 uses the current public command and shortcut APIs; the actual alpha.1 Web checks and separate rc.2 Desktop results are recorded in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 Target macOS, Windows and Linux, with separate shortcut and window-chrome validation for Desktop and Web. The shared renderer is not proof of identical native behavior. Actual Host checks are recorded per version in [docs/VALIDATION.md](docs/VALIDATION.md); Windows/Linux runtime acceptance remains pending.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.8 — 2026-10-07
+
+Documentation and packaging only. The Host and Client bundles are byte-identical to 0.2.7.
+
+- The Chinese and English READMEs are rewritten around a short recording made in the real DSH Web Host: asking AI to save three agreed tasks into a note, the note's **AI edited** mark, and checking one off. The page now covers what Jot does, working with AI, installation and a short FAQ. Keyboard shortcuts, AI tool details and the community submission statement are now only in the guides.
+- README images load from GitHub, so the npm package no longer ships README screenshots and npm shows the same page as GitHub.
+
 ## 0.2.7 — 2026-10-07
 
 ### Import
