@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.9 — 2026-10-10
+
+- Support the official DSH 0.2.1-alpha.2 SDK while retaining 0.2.0-rc.2 and 0.2.1-alpha.1. All 13 SDK peer alternatives and the bounded Workshop host declaration include alpha.2; development pins and the lockfile use that SDK. Runtime dependencies, note storage and AI defaults are unchanged.
+- Inline and block code in notes follow the host code font and code size. Older hosts keep the existing font and relative-size fallbacks; prose and toolbar rules are unchanged.
+- Local checks pass 376 tests, typecheck, Host/Client builds and package exports. Isolated alpha.2 Web covers real font settings, editing, Save, search, attachment/export bytes, AI tool toggling and co-installed Bridge lifecycle. rc.2 native Desktop and alpha.1 backward checks are recorded separately, including the signal-interrupted native cache restart limitation. See the [validation record](docs/VALIDATION.md#029--dsh-021-alpha2-compatibility).
+
 ## 0.2.8 — 2026-10-07
 
 Documentation and packaging only. The Host and Client bundles are byte-identical to 0.2.7.

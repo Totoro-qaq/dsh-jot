@@ -2,11 +2,14 @@
 
 Dates: 2026-10-02 through 2026-10-10 (Asia/Shanghai). Each section applies only to the version it names.
 
-## Unreleased — DSH 0.2.1-alpha.2 compatibility
+## 0.2.9 — DSH 0.2.1-alpha.2 compatibility
 
-Verified 2026-10-10 in isolated worktrees, based on `dcde43b7`, still carrying
-package version **0.2.8**. This is not the published npm 0.2.8 artifact. No
-commit, push, PR, merge, tag or publication is covered by this candidate record.
+Verified 2026-10-10 in isolated worktrees, based on `dcde43b7`. The tested
+candidate carried version **0.2.8**, but was not the published npm 0.2.8
+artifact. The adaptation merged through PR #14. Release preparation names the
+same verified Host/Client runtime **0.2.9**; package identity, docs and the
+bounded Workshop version declaration change, not executable code. CI, tag,
+publication and registry comparison are separate release gates.
 
 All 13 directly used DSH SDK peer alternatives retain rc.2/alpha.1 and add exact
 alpha.2; development pins/lockfile follow alpha.2. Cordis, Schemastery,
