@@ -53,7 +53,7 @@ Upgrading, removing and backing up are covered in the [guide](./docs/GUIDE.en.md
 
 ## Compatibility
 
-Works with DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 (Web). Windows and Linux pass source checks but have not been tested on real machines; the [validation record](./docs/VALIDATION.md) lists what each release was tested on.
+Works with DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 (Web). This unreleased compatibility candidate also passed bounded 0.2.1-alpha.2 Web acceptance, adds its SDK declarations, and follows the host code-font settings. Published npm 0.2.8 does not include these changes. Native Windows and Linux remain unverified; see the [validation record](./docs/VALIDATION.md#unreleased--dsh-021-alpha2-compatibility) for the exact scope.
 
 ---
 
