@@ -53,7 +53,7 @@ dsh plugin --profile web add dsh-jot
 
 ## 兼容性
 
-支持 DSH 0.2.0-rc.2（官方 macOS 桌面版）和 0.2.1-alpha.1（Web）。Windows 和 Linux 只做过源码检查，还没有在真机上验收；每个版本实际测过哪些内容，见[验证记录](./docs/VALIDATION.md)。
+支持 DSH 0.2.0-rc.2（官方 macOS 桌面版）和 0.2.1-alpha.1（Web）。本次适配候选版另通过 0.2.1-alpha.2 Web 验收，补充 SDK 支持声明并跟随宿主的代码字体设置，尚未发布到 npm；已发布的 0.2.8 不含这次改动。Windows 和 Linux 还没有在真机上验收；具体检查范围见[验证记录](./docs/VALIDATION.md#unreleased--dsh-021-alpha2-compatibility)。
 
 ---
 

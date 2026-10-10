@@ -1,6 +1,56 @@
 # Validation — dsh-jot
 
-Dates: 2026-10-02 through 2026-10-07 (Asia/Shanghai). Each section applies only to the version it names.
+Dates: 2026-10-02 through 2026-10-10 (Asia/Shanghai). Each section applies only to the version it names.
+
+## Unreleased — DSH 0.2.1-alpha.2 compatibility
+
+Verified 2026-10-10 in isolated worktrees, based on `dcde43b7`, still carrying
+package version **0.2.8**. This is not the published npm 0.2.8 artifact. No
+commit, push, PR, merge, tag or publication is covered by this candidate record.
+
+All 13 directly used DSH SDK peer alternatives retain rc.2/alpha.1 and add exact
+alpha.2; development pins/lockfile follow alpha.2. Cordis, Schemastery,
+`engines.dsh`, runtime dependencies, storage, AI gates and entry registration are
+unchanged. Two document-code CSS rules follow `--ds-font-family-code` and
+`--dsh-code-font-size`, retaining the legacy family and `.9em` / `.88em` fallback.
+
+Both candidates were installed together through the official CLIs in fresh
+**DSH 0.2.1-alpha.2 Web** and **0.2.0-rc.2 macOS Desktop** environments. Installed
+Host hash: `bdb40a93eda994ebe59207723176dc16680829be6c28662d0f1ed8ac4fb49664`;
+Client hash: `058fd86c827ed4af7e4e1b210f1114456e05d670b11b19ffa4d0c33fdc3e97f3`.
+The Host is byte-identical to published 0.2.8; the Client is not.
+
+| Check | Observed result |
+| --- | --- |
+| Official alpha.2 loading | Active with no version exemption; actual authenticated routes and sidebar work, co-installed with Bridge. |
+| Web typography | Default inline/block code is 11px. Real Settings controls select text Georgia, code Menlo and code size 13px: both code forms become 13px Menlo; prose remains 14px Georgia. Settings survive host restart. No CSS-variable injection was used. |
+| Web editing/persistence | A synthetic note contains text, code, two tasks, a table, an attachment and 45 paragraphs. Real checkbox/text edits and Save persist revision 2, 1/2 tasks and the edited text; table and attachment survive restart. |
+| Search/attachment/export | Actual Host search finds the note. Uploaded TXT bytes round-trip. The real UI Markdown export downloads a ZIP; independent inspection confirms the latest note text and intact attachment. Initial CDP download-path failures were corrected with the owned browser context; they are not successful downloads. |
+| Long content | Editor body has 812px client height / 2,048px scroll height with `overflow-y:auto`; note controls remain separate from scrolling content at 1280 × 900. This is a bounded layout check, not full visual/accessibility certification. |
+| AI default and live gate | Starts off with zero Jot tools. Real UI on/off produces six/zero registered tools. This run did not toggle during an in-flight model call; the earlier 0.2.7 check is separate evidence. |
+| Plugin isolation | Disabling/removing Bridge keeps Jot's UI and authenticated route available. Other stylesheet hashes are unchanged when Bridge's own stylesheet is removed. |
+| Jot removal/restart | Package/declaration, route, navigation and tools disappear. Restart succeeds without Jot. Edited note and attachment bytes remain intentionally stored; uninstall does not erase them. |
+| rc.2 native renderer | Official installed app, not a Web mirror: editing, task Save, table/attachment rendering and attachment bytes pass. With no new code-size variable, inline is 12.6px and block is 12.32px on 14px prose. |
+| rc.2 removal/restart | Carrier CLI removes both plugins. A normal native-menu Quit returns exit 0; the same fresh Electron user data and Desktop Home restart with no Jot entry and retained session/note files. A signal-interrupted earlier cache restart failed before window/host creation, so that attempt is not counted as a clean restart. |
+| alpha.1 backward smoke | Separate fresh official Web profile installs/starts both candidates with no exemptions, serves authenticated Jot state with AI off, and retains Bridge doctor 13/13. Full alpha.1 UI was not rerun. |
+
+All prompts, notes and files are synthetic. The daily DSH Home, original
+conversations and installed app were not replaced; no local AI model was loaded.
+The desktop update feed still names rc.2; alpha.2 Web is not alpha.2 Desktop.
+The earlier native freeze/account-avatar issue is not reproduced or fixed here.
+Native Windows/Linux, arbitrary third-party UIs, large folder/ZIP imports and
+full IME/shortcut/a11y matrices were not freshly accepted in this compatibility
+pass. Host SDK peers come from the installation fallback: profile-only
+`pnpm peers check` warns about missing SDK/React peers and is not reported as
+passing. Host/package caches and intentional user data are not zero-trace removed.
+
+Local gates: targeted RED 4/32 pass → GREEN 32/32; typecheck, **376/376 tests**,
+Host/Client build, frozen lock installation and package factory/export checks
+pass. Changed stylesheet module coverage is 100%, but full-source Node coverage
+is **77.31% lines / 85.18% branches / 75.27% functions**, not a global 80% claim.
+See [implementation TDD evidence](../.github/tdd/dsh-0.2.1-alpha.2.md).
+Publication and registry-install verification require a new release and are
+separate gates.
 
 ## 0.2.8 — documentation and package contents
 
