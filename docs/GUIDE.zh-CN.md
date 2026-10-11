@@ -221,7 +221,7 @@ ZIP 里每篇笔记一个文件，按文件夹分目录，未分类的笔记放�
 
 ## License
 
-插件：MIT。随包字体：[SIL Open Font License 1.1](../assets/fonts/OFL.txt)。
+插件：MIT。客户端打包的第三方代码：[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。随包字体：[SIL Open Font License 1.1](../assets/fonts/OFL.txt)。
 
 ## 社区收录材料
 

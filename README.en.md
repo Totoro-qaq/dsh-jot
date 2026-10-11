@@ -59,4 +59,4 @@ Works with DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 / alpha
 
 [Guide](./docs/GUIDE.en.md) · [Changelog](./CHANGELOG.md) · [Report an issue](https://github.com/Totoro-qaq/dsh-jot/issues) · [npm](https://www.npmjs.com/package/dsh-jot)
 
-[MIT](./LICENSE) · Fonts embedded in PDF exports use the [SIL Open Font License](./assets/fonts/OFL.txt)
+[MIT](./LICENSE) · Third-party code bundled in the client is listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) · Fonts embedded in PDF exports use the [SIL Open Font License](./assets/fonts/OFL.txt)

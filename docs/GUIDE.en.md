@@ -221,7 +221,7 @@ Cloud sync, real-time collaboration, version history, free drawing/annotation an
 
 ## License
 
-Plugin: MIT. Bundled fonts: [SIL Open Font License 1.1](../assets/fonts/OFL.txt).
+Plugin: MIT. Third-party code bundled into the client: [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md). Bundled fonts: [SIL Open Font License 1.1](../assets/fonts/OFL.txt).
 
 ## Community submission material
 

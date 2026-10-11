@@ -59,4 +59,4 @@ dsh plugin --profile web add dsh-jot
 
 [使用指南](./docs/GUIDE.zh-CN.md) · [更新记录](./CHANGELOG.md) · [反馈问题](https://github.com/Totoro-qaq/dsh-jot/issues) · [npm](https://www.npmjs.com/package/dsh-jot)
 
-[MIT](./LICENSE) · PDF 导出内嵌的字体使用 [SIL Open Font License](./assets/fonts/OFL.txt)
+[MIT](./LICENSE) · 客户端打包的第三方代码见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) · PDF 导出内嵌的字体使用 [SIL Open Font License](./assets/fonts/OFL.txt)

@@ -51,4 +51,4 @@ Use isolated test Homes and public sample notes. Give local packages content-has
 
 README images must be captured separately in Chinese and English in a real Host. A sidebar image should show a public, actual provider-backed dialogue. Identify fixtures and direct tool checks accurately; neither proves that the model invoked Jot's tools. Record Windows/Linux native interaction and hosted CI separately from macOS Web/Desktop evidence.
 
-Contributions are distributed under the [MIT license](./LICENSE). Embedded PDF fonts retain their [SIL Open Font License](./assets/fonts/OFL.txt).
+Contributions are distributed under the [MIT license](./LICENSE). Third-party code bundled into the client keeps the notices in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md). Embedded PDF fonts retain their [SIL Open Font License](./assets/fonts/OFL.txt).
