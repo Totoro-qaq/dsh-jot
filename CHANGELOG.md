@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.10 — 2026-10-11
+
+- Let DSH supply all 13 SDK peers with `*` declarations instead of enumerating individual releases. The existing `engines.dsh` support range and exact development SDK pins remain the compatibility and build baselines.
+- Verify actual installed SDK versions match the development pins, so stale local types cannot silently pass the compatibility checks.
+
 ## 0.2.9 — 2026-10-10
 
 - Support the official DSH 0.2.1-alpha.2 SDK while retaining 0.2.0-rc.2 and 0.2.1-alpha.1. All 13 SDK peer alternatives and the bounded Workshop host declaration include alpha.2; development pins and the lockfile use that SDK. Runtime dependencies, note storage and AI defaults are unchanged.

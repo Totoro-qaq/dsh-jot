@@ -1,6 +1,21 @@
 # Validation — dsh-jot
 
-Dates: 2026-10-02 through 2026-10-10 (Asia/Shanghai). Each section applies only to the version it names.
+Dates: 2026-10-02 through 2026-10-11 (Asia/Shanghai). Each section applies only to the version it names.
+
+## 0.2.10 — host SDK dependency policy
+
+Checked 2026-10-11. All 13 DSH SDK peer declarations use `*`, with the SDK
+provided by the host. Host support remains bounded by the existing
+`engines.dsh` range; Workshop declarations still name the three previously
+validated hosts. Development pins stay at `0.2.1-alpha.2`, and the Cordis,
+Schemastery and React contracts are retained.
+
+Compatibility tests read installed SDK manifests as well as development pins.
+They detected a stale local alpha.1 installation; frozen-lockfile installation
+synchronized it with the alpha.2 lockfile. The targeted checks pass 27/27;
+`pnpm check` passes typecheck, 376 tests and Host/Client builds, and
+`pnpm pack:check` passes. Runtime source is unchanged. The existing real-host
+acceptance below remains the reference for UI behavior.
 
 ## 0.2.9 — DSH 0.2.1-alpha.2 compatibility
 

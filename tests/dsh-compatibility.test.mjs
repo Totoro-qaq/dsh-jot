@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-const supportedSdkVersions = ['0.2.0-rc.2', '0.2.1-alpha.1', '0.2.1-alpha.2']
 const sdkNames = Object.keys(pkg.peerDependencies).filter(name => name.startsWith('@deepseek-ai/dsh-'))
 
 test('DSH compatibility preserves the existing engine range and Cordis/Schemastery contracts', () => {
@@ -16,11 +15,14 @@ test('DSH compatibility preserves the existing engine range and Cordis/Schemaste
 })
 
 for (const name of sdkNames) {
-  test(`${name} accepts alpha.2 without dropping the two older validated SDK versions`, () => {
-    assert.deepEqual(pkg.peerDependencies[name].split(/\s*\|\|\s*/u), supportedSdkVersions)
+  test(`${name} delegates SDK version selection to the host instead of an enumerated release list`, () => {
+    assert.equal(pkg.peerDependencies[name], '*')
+    assert.equal(pkg.dependencies[name], undefined, 'host SDK packages must not ship a second runtime copy')
   })
 
   test(`${name} development pin selects the actual alpha.2 SDK for build and test validation`, () => {
     assert.equal(pkg.devDependencies[name], '0.2.1-alpha.2')
+    const installed = JSON.parse(readFileSync(new URL(`../node_modules/${name}/package.json`, import.meta.url), 'utf8'))
+    assert.equal(installed.version, pkg.devDependencies[name], 'installed types must match the declared development SDK')
   })
 }
