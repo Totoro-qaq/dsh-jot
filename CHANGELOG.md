@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.11 — 2026-10-11
+
+- Ship `THIRD_PARTY_NOTICES.md` and versioned `LICENSES/` files with the upstream copyright and license texts for dependencies bundled into Jot.
+- Add the Adobe copyright notice to the offline font license and include the notices in npm and GitHub release packages.
+- Generate and validate third-party notices during the build and package checks. Runtime behavior is unchanged.
+
 ## 0.2.10 — 2026-10-11
 
 - Let DSH supply all 13 SDK peers with `*` declarations instead of enumerating individual releases. The existing `engines.dsh` support range and exact development SDK pins remain the compatibility and build baselines.
