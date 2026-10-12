@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { ActionMenu, type ActionMenuItem } from './ActionMenu.js'
 import { JotActionIcon } from './icons.js'
-import { abandonWidthAnnouncement, columnDividerDelta, columnWidthSample, explicitColumnWidth, flushWidthAnnouncement, nudgeTableColumn, observeColumnWidth, planWidthAnnouncement, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget, type WidthAnnouncementClock } from './table-actions.js'
+import { columnDividerDelta, columnWidthChange, columnWidthSample, explicitColumnWidth, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget, type WidthAnnouncementClock } from './table-actions.js'
 
 interface ChromeGeometry {
   column: number; row: number; bottom: number; middle: number
@@ -38,32 +38,26 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
   const widthSample = columnWidthSample(target)
   const widthText = (width: number) => en ? `Column ${target?.right ?? ''} width ${width} pixels` : `第 ${target?.right ?? ''} 列宽度 ${width} 像素`
   useEffect(() => {
-    if (!widthSample) {
-      if (announceTimer.current) clearTimeout(announceTimer.current)
-      announceTimer.current = null
-      announceClock.current = abandonWidthAnnouncement(announceClock.current)
-      return
-    }
-    const observed = observeColumnWidth(seenWidth.current, widthSample, announceClock.current)
+    const previous = seenWidth.current
     seenWidth.current = widthSample
-    announceClock.current = observed.clock
-    if (observed.switched) {
-      if (announceTimer.current) clearTimeout(announceTimer.current)
+    // 离开表格、换列或增删一列后，还没说出的宽度属于别的列。只有计时器会说出它，取消计时器就够了。
+    if (previous?.key !== widthSample?.key && announceTimer.current) {
+      clearTimeout(announceTimer.current)
       announceTimer.current = null
     }
-    if (observed.change === null) return
-    const plan = planWidthAnnouncement(announceClock.current, observed.change, Date.now())
+    const change = widthSample ? columnWidthChange(previous, widthSample) : null
+    if (change === null) return
+    const plan = planWidthAnnouncement(announceClock.current, change, Date.now())
     announceClock.current = plan.clock
     if (plan.announce !== null) setWidthMessage(widthText(plan.announce))
     if (plan.waitMs != null) {
       if (announceTimer.current) clearTimeout(announceTimer.current)
-      const wait = plan.waitMs
       announceTimer.current = setTimeout(() => {
         announceTimer.current = null
         const flushed = flushWidthAnnouncement(announceClock.current ?? { lastAt: 0, pending: null }, Date.now())
         announceClock.current = flushed.clock
         if (flushed.announce !== null) setWidthMessage(widthText(flushed.announce))
-      }, wait)
+      }, plan.waitMs)
     }
   }, [widthSample?.key, widthSample?.width, en, target?.right])
   useEffect(() => () => { if (announceTimer.current) clearTimeout(announceTimer.current) }, [])

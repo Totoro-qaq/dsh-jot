@@ -6,7 +6,7 @@ import { CellSelection, columnResizingPluginKey, TableMap } from '@tiptap/pm/tab
 import { createJotExtensions } from '../src/client/editor-extensions.js'
 import { syncEditorContent } from '../src/client/editor-content.js'
 import { persistableTableWidthPlugin } from '../src/client/table-view.js'
-import { COLUMN_WIDTH_ANNOUNCE_MS, abandonWidthAnnouncement, columnDividerDelta, columnWidthChange, columnWidthSample, flushWidthAnnouncement, nudgeTableColumn, observeColumnWidth, planWidthAnnouncement, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
+import { COLUMN_WIDTH_ANNOUNCE_MS, columnDividerDelta, columnWidthChange, columnWidthSample, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
 import { docToText, MAX_DOC_BYTES, validateRichDoc } from '../src/model.js'
 
 const paragraph = (text?: string) => ({ type: 'paragraph', ...(text ? { content: [{ type: 'text', text }] } : {}) })
@@ -52,9 +52,10 @@ test('column width is announced only when the same column changes', () => {
   assert.equal(again.announce, 168)
   const pending = planWidthAnnouncement(again.clock, 184, again.clock.lastAt + 100)
   assert.equal(pending.clock.pending, 184)
-  assert.equal(abandonWidthAnnouncement(pending.clock)?.pending, null)
-  assert.equal(abandonWidthAnnouncement(pending.clock)?.lastAt, pending.clock.lastAt)
-  assert.equal(flushWidthAnnouncement(abandonWidthAnnouncement(pending.clock)!, pending.clock.lastAt + COLUMN_WIDTH_ANNOUNCE_MS).announce, null)
+  // 间隔过后立即播报会清掉待播的宽度，旧计时器再到点也没有可说的。
+  const immediate = planWidthAnnouncement(pending.clock, 200, again.clock.lastAt + COLUMN_WIDTH_ANNOUNCE_MS)
+  assert.equal(immediate.announce, 200)
+  assert.equal(flushWidthAnnouncement(immediate.clock, immediate.clock.lastAt + 50).announce, null)
 })
 
 function apply(editor: Editor, action: TableAction) {
@@ -66,44 +67,28 @@ function apply(editor: Editor, action: TableAction) {
   return validateRichDoc(editor.getJSON())
 }
 
-test('deleting a middle column drops its pending width instead of announcing it for the next column', t => {
+test('deleting or inserting a column gives the column under the caret a new width key', t => {
   const widths = [120, 200, 300]
   const editor = create([{ type: 'table', content: [0, 1].map(row => ({ type: 'tableRow', content: widths.map((width, column) =>
     cell(`${row}:${column}`, { colwidth: [width] })) })) }])
   t.after(() => editor.destroy())
   const middle = select(editor, 0, 0, 1)
-  const seen = columnWidthSample(middle)!
-  assert.equal(seen.width, 200)
-  const spoken = planWidthAnnouncement(null, 200, 1_000)
   editor.view.dispatch(closeHistory(nudgeTableColumn(editor.state, middle, 1, TABLE_COLUMN_NUDGE, 200)!))
   const nudged = columnWidthSample(select(editor, 0, 0, 1))!
-  const changed = observeColumnWidth(seen, nudged, spoken.clock)
-  assert.deepEqual({ change: changed.change, switched: changed.switched }, { change: 216, switched: false })
-  const pending = planWidthAnnouncement(changed.clock, changed.change!, 1_000 + 200)
-  assert.equal(pending.clock.pending, 216)
+  assert.equal(nudged.width, 216)
   apply(editor, 'column-delete')
   const next = select(editor, 0, 0, 1)
-  // 位置和列号都没变，只有列数少了一列；不带列数的键会把这里当成同一列。
+  // 位置和列号都没变，只有列数少了一列；不带列数的键会把这里当成同一列，把 216 报成这一列的宽度。
   assert.equal(next.tablePos, middle.tablePos)
   assert.equal(next.right, middle.right)
   const replacement = columnWidthSample(next)!
   assert.equal(replacement.width, 300)
   assert.notEqual(replacement.key, nudged.key)
-  const observed = observeColumnWidth(nudged, replacement, pending.clock)
-  assert.equal(observed.switched, true)
-  assert.equal(observed.change, null)
-  assert.equal(observed.clock?.pending, null)
-  assert.equal(flushWidthAnnouncement(observed.clock!, 1_000 + COLUMN_WIDTH_ANNOUNCE_MS).announce, null)
-  const resized = observeColumnWidth(replacement, { ...replacement, width: 316 }, observed.clock)
-  assert.deepEqual({ change: resized.change, switched: resized.switched }, { change: 316, switched: false })
-  const waiting = planWidthAnnouncement(resized.clock, 316, 1_000 + 300)
-  assert.equal(waiting.clock.pending, 316)
+  assert.equal(columnWidthChange(nudged, replacement), null)
   apply(editor, 'column-after')
   const inserted = columnWidthSample(select(editor, 0, 0, 1))!
   assert.equal(inserted.width, 300)
-  const afterInsert = observeColumnWidth(replacement, inserted, waiting.clock)
-  assert.equal(afterInsert.switched, true)
-  assert.equal(afterInsert.clock?.pending, null)
+  assert.notEqual(inserted.key, replacement.key)
   assert.equal(columnWidthSample(null), null)
 })
 
