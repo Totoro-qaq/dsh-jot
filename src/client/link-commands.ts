@@ -98,8 +98,16 @@ function excludesLink(mark: Mark, linkType: Mark['type']): boolean {
   return mark.type !== linkType && (mark.type.excludes(linkType) || linkType.excludes(mark.type))
 }
 
-/** 选区里每个字符的标记。下标与 `textBetween` 对齐，同一父节点内不会插入换行。 */
+/**
+ * 选区里每个字符的标记。下标与 `textBetween` 对齐，同一父节点内不会插入换行。
+ * 光标收起时没有字符可读，返回当前存储的标记，避免插入链接丢掉刚打开的粗体。
+ * 空数组表示用户清掉了标记，不能再退回到光标两侧的标记。
+ */
 function marksAt(state: EditorState, from: number, to: number): (index: number) => readonly Mark[] {
+  if (from === to) {
+    const stored = state.storedMarks ?? state.doc.resolve(from).marks()
+    return () => stored
+  }
   const slices: Array<{ text: string; marks: readonly Mark[] }> = []
   if (from < to) state.doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isText || !node.text) return
@@ -125,6 +133,7 @@ interface TextPiece { text: string; marks: readonly Mark[] }
 /**
  * 按公共前缀和后缀把新文字对齐到旧文字，逐字保留原来的标记。
  * 中间被替换或插入的一段继承被替换字符的公共标记；纯插入则继承相邻字符。
+ * 没有任何原文时继承 `markAt(0)`，收起的光标会在那里给出存储的标记。
  */
 function piecesForEdit(original: string, next: string, markAt: (index: number) => readonly Mark[]): TextPiece[] {
   let prefix = 0
@@ -155,6 +164,7 @@ function piecesForEdit(original: string, next: string, markAt: (index: number) =
       }
     } else if (prefix > 0) inherited = markAt(prefix - 1)
     else if (suffix > 0) inherited = markAt(replacedEnd)
+    else inherited = markAt(0)
     push(middle, inherited)
   }
   for (let index = next.length - suffix; index < next.length; index++) {
@@ -237,7 +247,7 @@ export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   } else if (rangeExcludesLink(state, from, to, link)) {
     return 'unsupported'
   }
-  if (!dispatch) return true
+  // 先建事务并做和正式提交相同的校验。干跑不能在超长文字上提前返回 true。
   let tr = state.tr
   let end = to
   if (nodes) {
@@ -250,6 +260,7 @@ export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   }
   if (!tr.docChanged) return true
   try { validateRichDoc(tr.doc.toJSON()) } catch { return 'unsupported' }
+  if (!dispatch) return true
   dispatch(tr.setSelection(TextSelection.create(tr.doc, from, end)).scrollIntoView())
   return true
 }
@@ -305,7 +316,11 @@ export interface LinkClickProbe {
   attachment: boolean
 }
 
-/** 点击处文档里的链接地址。渲染成空 href 时仍以标记为准，避免点下去被浏览器当成当前页。 */
+/**
+ * 点击处文档里的链接地址。
+ * 两条链接相接时，边界上的 `marks()` 会因为链接标记 inclusive 而落到左侧，所以先看右侧的 `nodeAfter`。
+ * 渲染时若没有 href，仍以标记为准，避免浏览器把空地址当成当前页。
+ */
 export function linkMarkHref(state: EditorState, pos: number): string | null {
   const link = state.schema.marks.link
   if (!link) return null
@@ -315,7 +330,7 @@ export function linkMarkHref(state: EditorState, pos: number): string | null {
     const href = mark ? String(mark.attrs.href ?? '') : ''
     return href || null
   }
-  return hrefOf($pos.marks()) ?? hrefOf($pos.nodeAfter?.marks) ?? hrefOf($pos.nodeBefore?.marks)
+  return hrefOf($pos.nodeAfter?.marks) ?? hrefOf($pos.marks()) ?? hrefOf($pos.nodeBefore?.marks)
 }
 
 /** 编辑时单击只落光标；只读或按住主修饰键才打开。带账号口令的地址一律拦截，附件卡片仍走原来的预览。 */
@@ -334,4 +349,25 @@ export function handleLinkClick(action: 'ignore' | 'open' | 'place-caret' | 'blo
   if (action === 'open') open()
   event.preventDefault()
   return true
+}
+
+/**
+ * 原生 `click` 和中键 `auxclick` 会跟着 href 导航，mouseup 上的 preventDefault 拦不住。
+ * 只拦带账号口令的地址；附件卡片和普通链接仍走原来的点击处理。
+ */
+export function blockCredentialLinkEvent(event: { type: string; preventDefault(): void }, href: string | null, attachment: boolean): boolean {
+  if (attachment || (event.type !== 'click' && event.type !== 'auxclick')) return false
+  if (!href || !linkHrefHasCredentials(href)) return false
+  event.preventDefault()
+  return true
+}
+
+/** 删除时只用浮层打开那一刻的地址和原文。之后改过的输入不能拿来比对，否则删除会静默失败。 */
+export function openedLinkRange(draft: {
+  from: number
+  to: number
+  original: string
+  originalHref: string | null
+}): { from: number; to: number; original: string; href: string | null } {
+  return { from: draft.from, to: draft.to, original: draft.original, href: draft.originalHref }
 }

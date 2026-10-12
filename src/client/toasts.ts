@@ -38,6 +38,14 @@ export function toastRemainingAfter(remainingMs: number, elapsedMs: number): num
 }
 
 /**
+ * 计时效果只该依赖提示编号，以及撤销提示是否因忙碌而暂停。
+ * 普通通知的 `paused` 一直是 false，界面变忙不会重开它的计时器。
+ */
+export function toastTimerDeps(id: number, hasAction: boolean, busy: boolean): { id: number; paused: boolean } {
+  return { id, paused: hasAction && busy }
+}
+
+/**
  * 带操作的提示（移到回收站后的撤销）不会被随后的普通通知替换。
  * 新的可撤销操作会换上自己的撤销；普通通知之间仍显示最新的一条。
  */

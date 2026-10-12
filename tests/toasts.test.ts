@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { activateToast, dismissToast, emptyToastQueue, pushToast, TOAST_ACTION_MS, TOAST_NOTICE_MS, toastDeadline, toastRemainingAfter, type ToastNotice } from '../src/client/toasts.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, TOAST_ACTION_MS, TOAST_NOTICE_MS, toastDeadline, toastRemainingAfter, toastTimerDeps, type ToastNotice } from '../src/client/toasts.js'
 
 const notice = (id: number, text: string, action = false): ToastNotice => ({
   id, text, ...(action ? { action: { label: 'Undo', run() {} } } : {}),
@@ -49,6 +49,15 @@ test('the undo timer pauses while busy and a new undo starts from a full six sec
   const notice = toastDeadline({ id: 3, hasAction: false, busy: true, clock: replaced.clock })
   assert.equal(notice.delayMs, TOAST_NOTICE_MS)
   assert.equal(notice.clock, null)
+  const idleNotice = toastTimerDeps(3, false, false)
+  const busyNotice = toastTimerDeps(3, false, true)
+  assert.equal(idleNotice.paused, false)
+  assert.deepEqual(busyNotice, idleNotice)
+  const idleUndo = toastTimerDeps(1, true, false)
+  const busyUndo = toastTimerDeps(1, true, true)
+  assert.equal(idleUndo.paused, false)
+  assert.equal(busyUndo.paused, true)
+  assert.equal(busyUndo.id, 1)
 })
 
 test('a newer undo replaces the visible undo and ordinary notices still replace each other', () => {

@@ -1,4 +1,5 @@
-import { Node, type Editor, type Extensions } from '@tiptap/core'
+import { mergeAttributes, Node, type Editor, type Extensions } from '@tiptap/core'
+import Link, { isAllowedUri } from '@tiptap/extension-link'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -145,18 +146,39 @@ function jotShouldAutoLink(url: string): boolean {
   return true
 }
 
+/**
+ * StarterKit 的 Link 在 `isAllowedUri` 失败时仍写出 `href=""`。
+ * 空字符串会被浏览器当成当前页，左键会刷新，中键会新开当前页。这里直接不写 href。
+ */
+const JotLink = Link.extend({
+  renderHTML(props) {
+    const { HTMLAttributes } = props
+    const href = typeof HTMLAttributes.href === 'string' ? HTMLAttributes.href : ''
+    const allowed = this.options.isAllowedUri(href, {
+      defaultValidate: (url: string) => Boolean(isAllowedUri(url, this.options.protocols)),
+      protocols: this.options.protocols,
+      defaultProtocol: this.options.defaultProtocol,
+    })
+    if (!allowed) {
+      const { href: _href, ...rest } = HTMLAttributes
+      return ['a', mergeAttributes(this.options.HTMLAttributes, rest), 0]
+    }
+    return this.parent?.(props) ?? ['a', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
+  },
+})
+
 /** Shared by the actual editor and headless schema/command regression tests. */
 export function createJotExtensions(options: JotExtensionOptions = {}): Extensions {
   const resolve = options.resolveAttachmentUrl ?? managedAttachmentUrl
   const locale = options.locale ?? (() => 'zh' as const)
   return [StarterKit.configure({
     heading: { levels: [1, 2, 3, 4, 5, 6] },
-    // 编辑时单击只移动光标。带账号口令的地址不自动链接，点击时也不交给浏览器。
-    link: {
-      openOnClick: false,
-      isAllowedUri: (url, ctx) => ctx.defaultValidate(url) && !linkHrefHasCredentials(url),
-      shouldAutoLink: jotShouldAutoLink,
-    },
+    link: false,
+  }), JotLink.configure({
+    // 编辑时单击只移动光标。带账号口令的地址不自动链接，渲染时也不带 href。
+    openOnClick: false,
+    isAllowedUri: (url, ctx) => ctx.defaultValidate(url) && !linkHrefHasCredentials(url),
+    shouldAutoLink: jotShouldAutoLink,
   }), JotHeadingKeys, JotListKeys, JotTableKeys,
     TaskList, JotTaskItem.configure({ nested: true, a11y: { checkboxLabel: node => taskCheckboxLabel(node.textContent, locale()) } }),
     JotTable.configure({ resizable: true, renderWrapper: true, cellMinWidth: TABLE_CELL_MIN_WIDTH,

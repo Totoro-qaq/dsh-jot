@@ -26,7 +26,7 @@ import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note
 import { consumeJotCommand, type JotCommandRequest } from './commands.js'
 import type { AttachmentInfo, ExportFormat, ImportSummary, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
 import type { AttachmentDialogRequest } from './attachment-dialog.js'
-import { activateToast, dismissToast, emptyToastQueue, pushToast, toastDeadline, toastRemainingAfter, type ToastNotice } from './toasts.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, toastDeadline, toastRemainingAfter, toastTimerDeps, type ToastNotice } from './toasts.js'
 
 export interface JotAppProps {
   mode: 'compact' | 'wide'
@@ -163,9 +163,11 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   }, [])
   const dismissVisibleToast = (id: number) => setToastQueue(queue => dismissToast(queue, id))
   const toastClock = useRef<{ id: number; remainingMs: number } | null>(null)
+  // 普通通知的 paused 一直是 false，busy 变化不会重开计时器。撤销提示才会在忙碌时暂停。
+  const toastTiming = toast ? toastTimerDeps(toast.id, Boolean(toast.action), busy) : null
   useEffect(() => {
-    if (!toast) { toastClock.current = null; return }
-    const decision = toastDeadline({ id: toast.id, hasAction: Boolean(toast.action), busy, clock: toastClock.current })
+    if (!toast || !toastTiming) { toastClock.current = null; return }
+    const decision = toastDeadline({ id: toastTiming.id, hasAction: Boolean(toast.action), busy: toastTiming.paused, clock: toastClock.current })
     toastClock.current = decision.clock
     if (decision.delayMs === null) return
     const started = Date.now()
@@ -177,7 +179,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         id: toast.id, remainingMs: toastRemainingAfter(toastClock.current.remainingMs, Date.now() - started),
       }
     }
-  }, [toast, busy])
+  }, [toast, toastTiming?.id, toastTiming?.paused])
   const fileInput = useRef<HTMLInputElement>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)
