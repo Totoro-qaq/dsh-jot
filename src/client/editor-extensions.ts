@@ -134,7 +134,11 @@ function managedNode(name: 'image' | 'attachment', resolve: (id: string) => stri
 export function createJotExtensions(options: JotExtensionOptions = {}): Extensions {
   const resolve = options.resolveAttachmentUrl ?? managedAttachmentUrl
   const locale = options.locale ?? (() => 'zh' as const)
-  return [StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }), JotHeadingKeys, JotListKeys,
+  return [StarterKit.configure({
+    heading: { levels: [1, 2, 3, 4, 5, 6] },
+    // 编辑时单击链接只移动光标，打开地址交给浮层。只读笔记仍由浏览器跟随链接。
+    link: { openOnClick: false },
+  }), JotHeadingKeys, JotListKeys,
     TaskList, JotTaskItem.configure({ nested: true, a11y: { checkboxLabel: node => taskCheckboxLabel(node.textContent, locale()) } }),
     JotTable.configure({ resizable: true, renderWrapper: true, cellMinWidth: TABLE_CELL_MIN_WIDTH,
       handleWidth: 6, View: JotTableView }), TableRow, TableHeader, TableCell, PersistableTableWidths,

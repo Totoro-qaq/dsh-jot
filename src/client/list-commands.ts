@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Fragment } from '@tiptap/pm/model'
+import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
 import { Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
 
 type Dispatch = ((tr: Transaction) => void) | undefined
@@ -53,6 +53,47 @@ export function moveListItem(direction: 'up' | 'down') {
     dispatch(tr.setSelection(moved).scrollIntoView())
     return true
   }
+}
+
+const completedTask = (node: ProseMirrorNode) => node.type.name === 'taskItem' && node.attrs.checked === true
+
+/**
+ * 把当前核对清单里已勾选的项移到底部。未完成和已完成各自保持原来的相对顺序，
+ * 嵌套清单随所属项一起移动，不打散。已经整理好、或没有可移动的项时不产生撤销记录。
+ */
+export function tidyCompletedTasks(state: EditorState, dispatch?: Dispatch): boolean {
+  const depth = sharedAncestor(state, new Set(['taskList']))
+  if (depth === null) return false
+  const { $from } = state.selection
+  const list = $from.node(depth)
+  const children: ProseMirrorNode[] = []
+  list.forEach(child => children.push(child))
+  let seenDone = false
+  let needsMove = false
+  for (const child of children) {
+    if (completedTask(child)) seenDone = true
+    else if (seenDone) needsMove = true
+  }
+  if (!needsMove) return false
+  const ordered = [...children.filter(child => !completedTask(child)), ...children.filter(completedTask)]
+  if (!dispatch) return true
+  const start = $from.start(depth)
+  const tr = state.tr.replaceWith(start, $from.end(depth), Fragment.from(ordered))
+  const remap = (pos: number, $pos: ResolvedPos) => {
+    if ($pos.depth <= depth) return pos
+    const child = children[$pos.index(depth)]
+    const next = child ? ordered.indexOf(child) : -1
+    if (!child || next < 0) return pos
+    let cursor = start
+    for (let index = 0; index < next; index++) cursor += ordered[index]!.nodeSize
+    return cursor + (pos - $pos.before(depth + 1))
+  }
+  const anchor = remap(state.selection.anchor, state.doc.resolve(state.selection.anchor))
+  const head = remap(state.selection.head, state.doc.resolve(state.selection.head))
+  const selection = state.selection instanceof TextSelection
+    ? TextSelection.create(tr.doc, anchor, head) : Selection.near(tr.doc.resolve(head))
+  dispatch(tr.setSelection(selection).scrollIntoView())
+  return true
 }
 
 /** Keys for checklist work; they only act inside list items, so other blocks keep their defaults. */

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Editor, type JSONContent } from '@tiptap/core'
+import { history } from '@tiptap/pm/history'
 import { TextSelection } from '@tiptap/pm/state'
 import { createJotExtensions, refreshTaskCheckboxLabels, taskCheckboxLabel } from '../src/client/editor-extensions.js'
-import { moveListItem, toggleTaskAtSelection } from '../src/client/list-commands.js'
+import { moveListItem, tidyCompletedTasks, toggleTaskAtSelection } from '../src/client/list-commands.js'
 import { validateRichDoc } from '../src/model.js'
 
 const text = (value: string) => ({ type: 'text', text: value })
@@ -12,7 +13,9 @@ const task = (value: string, checked = false, nested?: JSONContent) => ({ type: 
   content: [paragraph(value), ...(nested ? [nested] : [])] })
 const bullet = (value: string) => ({ type: 'listItem', content: [paragraph(value)] })
 function create(content: JSONContent[], locale: 'zh' | 'en' = 'zh') {
-  return new Editor({ element: null, extensions: createJotExtensions({ locale: () => locale }), content: { type: 'doc', content } })
+  const editor = new Editor({ element: null, extensions: createJotExtensions({ locale: () => locale }), content: { type: 'doc', content } })
+  editor.registerPlugin(history())
+  return editor
 }
 /** Put the caret inside the first text node containing `needle`, `offset` characters in. */
 function caret(editor: Editor, needle: string, offset = 1) {
@@ -171,4 +174,44 @@ test('moving a nested item stays inside its own list, and a selection across ite
   })
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)))
   assert.equal(moveListItem('down')(editor.state), false)
+})
+
+test('tidy moves completed to-dos to the bottom of the current list, keeps relative order, and undoes', t => {
+  const nested = { type: 'taskList', content: [task('子项', true)] }
+  const editor = create([{ type: 'taskList', content: [
+    task('已完成甲', true),
+    task('未完成甲'),
+    task('已完成乙', true, nested),
+    task('未完成乙'),
+  ] }, { type: 'taskList', content: [task('另一张清单', true), task('留在原处')] }])
+  t.after(() => editor.destroy())
+  caret(editor, '未完成甲')
+  assert.equal(tidyCompletedTasks(editor.state), true)
+  assert.equal(tidyCompletedTasks(editor.state, editor.view.dispatch), true)
+  assert.deepEqual(tasks(editor).slice(0, 5), [
+    ['未完成甲', false], ['未完成乙', false], ['已完成甲', true], ['已完成乙', true], ['子项', true],
+  ])
+  assert.equal(editor.state.selection.$from.parent.textContent, '未完成甲')
+  assert.deepEqual(tasks(editor).slice(5), [['另一张清单', true], ['留在原处', false]], 'a different checklist is left alone')
+  const saved = validateRichDoc(editor.getJSON())
+  assert.equal(editor.commands.undo(), true)
+  assert.equal(editor.state.doc.firstChild!.firstChild!.textContent, '已完成甲')
+  assert.notDeepEqual(editor.getJSON(), saved)
+})
+
+test('tidy does nothing when completed items are already last, so it adds no undo step', t => {
+  const editor = create([{ type: 'taskList', content: [task('未完成'), task('已完成', true), task('也完成', true)] }])
+  t.after(() => editor.destroy())
+  caret(editor, '未完成')
+  const before = editor.getJSON()
+  assert.equal(tidyCompletedTasks(editor.state, editor.view.dispatch), false)
+  caret(editor, '已完成')
+  assert.equal(tidyCompletedTasks(editor.state), false, 'a list of only trailing completed items is already tidy')
+  const done = create([{ type: 'taskList', content: [task('一', true), task('二', true)] }, paragraph('普通段落')])
+  t.after(() => done.destroy())
+  caret(done, '一')
+  assert.equal(tidyCompletedTasks(done.state), false)
+  caret(done, '普通段落')
+  assert.equal(tidyCompletedTasks(done.state), false, 'outside a checklist there is nothing to tidy')
+  assert.deepEqual(editor.getJSON(), before)
 })

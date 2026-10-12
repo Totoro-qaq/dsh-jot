@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Writing
+
+- Add, edit, open or remove a link from the toolbar or with Mod+K. The popover is focusable and Escape closes it. Pasted addresses are still detected automatically. A plain click in an editable note places the caret; Ctrl/Command-click, or a click in a read-only note, opens the address. Mod+K stays inside the editor and is not registered with the host.
+- **Tidy** on the toolbar moves completed items in the current checklist to the bottom. Incomplete and completed items each keep their relative order, nested lists move with their parent item, and Undo restores the previous order.
+
+### Fixed
+
+- Shift+F10 and the keyboard menu key open the same note menu as a right-click when a note row has focus. F10 alone is left to the browser. Selection mode still has no menu.
+- The title and the editor body show the accent outline while they have keyboard focus.
+- After the column-resize control is focused, Left and Right change that column's width by 16 pixels. Dragging a border is unchanged, and each keypress is its own undo step.
+- A notice that arrives while Trash's Undo is still showing no longer replaces that Undo. The latest ordinary notice appears after the Undo is dismissed or expires.
+
 ## 0.2.11 — 2026-10-11
 
 - Ship `THIRD_PARTY_NOTICES.md` and versioned `LICENSES/` files with the upstream copyright and license texts for dependencies bundled into Jot.

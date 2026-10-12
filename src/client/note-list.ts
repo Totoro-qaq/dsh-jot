@@ -5,6 +5,12 @@ export type NoteListRow =
   | { kind: 'header'; key: string; group: NoteDateGroup; label: string; count: number }
   | { kind: 'note'; key: string; note: Note; position: number }
 export type NavigationKey = 'ArrowDown' | 'ArrowUp' | 'Home' | 'End'
+
+/** Shift+F10 与键盘上的菜单键，用来打开当前笔记的右键菜单。单独的 F10 仍留给浏览器。 */
+export function isNoteContextMenuKey(event: { key: string; shiftKey?: boolean; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) return false
+  return event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey === true)
+}
 export type NoteDateBasis = 'modified' | 'created' | 'none'
 export interface HighlightSegment { text: string; matched: boolean }
 

@@ -7,7 +7,7 @@ const chord = (key: string, patch: Partial<EditorKeyEvent> = {}): EditorKeyEvent
 })
 
 test('editor formatting and history use the OS primary modifier rather than accepting either one', () => {
-  for (const [key, action] of [['b', 'bold'], ['i', 'italic'], ['u', 'underline'], ['f', 'find'], ['z', 'undo']] as const) {
+  for (const [key, action] of [['b', 'bold'], ['i', 'italic'], ['u', 'underline'], ['f', 'find'], ['k', 'link'], ['z', 'undo']] as const) {
     assert.equal(editorShortcut(chord(key), false), action)
     assert.equal(editorShortcut(chord(key), true), null)
     assert.equal(editorShortcut(chord(key, { ctrlKey: false, metaKey: true }), true), action)
@@ -36,4 +36,6 @@ test('visible shortcut hints follow Apple and non-Apple conventions', () => {
   assert.equal(editorShortcutLabel('underline', true), '⌘U')
   assert.equal(editorShortcutLabel('underline', false), 'Ctrl+U')
   assert.equal(editorShortcutLabel('redo', true), '⇧⌘Z')
+  assert.equal(editorShortcutLabel('link', true), '⌘K')
+  assert.equal(editorShortcutLabel('link', false), 'Ctrl+K')
 })

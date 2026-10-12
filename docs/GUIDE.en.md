@@ -19,6 +19,7 @@ Jot is a human-owned notes and lightweight-document workbench for DSH. Write par
 - Search matches titles and body text, ranks title matches first and shows the text around body matches. Searching from **Recent** covers every note. Inside Jot, outside a text field, press `/` to search.
 - When nothing matches but other folders or Trash do, Jot says how many and offers **Search all folders** or **Show in Trash**, keeping your search words.
 - **Sort and options** sorts by last modified, date created or title (Recent always uses last modified) and starts multi-select for moving notes or moving them to Trash. It also holds **Export all notes…** and **Keyboard shortcuts**.
+- With a note focused, Shift+F10 or the keyboard menu key opens the same menu as a right-click (pin, move, duplicate, export, delete). F10 alone stays with the browser. Selection mode has no menu.
 - Each row shows the time, checklist progress such as `2/5`, its folder, and an **AI edited** label when the latest saved version came from AI. Untitled notes borrow their first line as the displayed title.
 - Folders are optional and named by you. Without folders, create the first one from **Sort and options**. Once folders exist, a folder filter and **Folder actions** (new, rename, delete; deleting keeps its notes) appear at the top of the list.
 - In the workbench, drag the list's right edge to resize it (double-click to reset), or hide the list with the button in the top-right corner to focus on writing. The title, formatting toolbar and body share a left edge, with a readable maximum width and spare space on the right.
@@ -26,10 +27,11 @@ Jot is a human-owned notes and lightweight-document workbench for DSH. Write par
 ### Editing
 
 - **New** puts the cursor in the title; press Enter to continue in the body. An untouched new empty note is removed when you leave it. Notes you have edited, pinned or moved to a folder are kept, even if you later clear the body.
-- Bold, italic, underline and checklist are always on the toolbar. **Style** offers body text, headings 1–3, bullet and numbered lists, quote, code block, strikethrough, inline code, divider, clear formatting, seven text colors and six highlights, each with its shortcut beside it (hidden in narrow panes, still shown on hover). Colors switch to readable shades in dark themes; saving and export keep the original palette.
+- Bold, italic, underline, link and checklist are always on the toolbar. **Style** offers body text, headings 1–3, bullet and numbered lists, quote, code block, strikethrough, inline code, divider, clear formatting, seven text colors and six highlights, each with its shortcut beside it (hidden in narrow panes, still shown on hover). Colors switch to readable shades in dark themes; saving and export keep the original palette. The title and the body show an accent outline while they have keyboard focus.
+- Select text and use the link button or Mod+K to set the text and address. With the caret inside an existing link, the same popover edits the address or text, opens the link or removes it. The popover takes focus when it opens, and Escape closes it. It accepts http, https, mailto, tel and addresses that start with `#`; a hostname without a scheme gets `https://`. Pasted addresses are still detected automatically. A plain click in an editable note only places the caret; Ctrl/Command-click, or a click in a read-only note, opens the address.
 - Type `/` on an empty line for the insert menu: body text, headings 1–3, to-do list, bullet and numbered lists, quote, code block, table, divider and **Image or file**. Chinese input methods produce `、` from the same key, which works too. Keep typing to filter in Chinese, English or pinyin initials (`/bt` finds headings). Use ↑/↓ to choose, Enter or Tab to insert, and Escape to close while keeping what you typed. The menu opens only when the line holds nothing but the symbol and the filter with the caret at its end, so `/` and `、` inside sentences are unaffected; it never opens in tables.
 - You can also type `# `, `- `, `1. `, `[ ] `, `> `, `---` or `**bold**` to format as you write.
-- In a to-do, Mod+Enter checks or unchecks it. In a list or checklist, Alt+Shift+↑/↓ moves the current item up or down; nested items move within their own level.
+- In a to-do, Mod+Enter checks or unchecks it. In a list or checklist, Alt+Shift+↑/↓ moves the current item up or down; nested items move within their own level. With the caret in a checklist, **Tidy** on the toolbar moves completed items to the bottom of that list. Incomplete and completed items each keep their order, and Undo restores the previous order. The button is unavailable when the list is already tidy or has nothing completed.
 - **Find** searches, jumps and replaces inside the current note; Replace all is one undo step. Notes in Trash can be searched but not edited.
 - The top-right status shows saving. Notes save automatically; click **Unsaved** or press Mod+S to save immediately. A failure reads **Save failed · Retry**.
 
@@ -85,6 +87,7 @@ Editing uses Command on macOS and Ctrl on Windows and Linux:
 | Copy / cut / paste / select all | Command + C / X / V / A | Ctrl + C / X / V / A |
 | Undo / redo | Command + Z / Shift + Command + Z | Ctrl + Z / Ctrl + Shift + Z; also Ctrl + Y |
 | Bold / italic / underline | Command + B / I / U | Ctrl + B / I / U |
+| Add or edit a link | Command + K | Ctrl + K |
 | Find in note / save | Command + F / S | Ctrl + F / S |
 | Body text / heading 1–3 | Option + Command + 0 / 1–3 | Ctrl + Alt + 0 / 1–3 |
 | Bullet / numbered / to-do list | Shift + Command + 8 / 7 / 9 | Ctrl + Shift + 8 / 7 / 9 |
@@ -92,6 +95,9 @@ Editing uses Command on macOS and Ctrl on Windows and Linux:
 | Strikethrough / inline code / highlight | Shift + Command + S / Command + E / Shift + Command + H | Ctrl + Shift + S / Ctrl + E / Ctrl + Shift + H |
 | Check or uncheck this to-do | Command + Return | Ctrl + Enter |
 | Move this list item up / down | Option + Shift + ↑ / ↓ | Alt + Shift + ↑ / ↓ |
+| Move completed items to the bottom | **Tidy** on the toolbar | same |
+| Open the note menu | Shift+F10 / Menu | same |
+| Resize this column | ← / → after focusing the column control | same |
 | Search all notes | `/` | `/` |
 | Show all shortcuts | `?` | `?` |
 
@@ -107,7 +113,7 @@ Desktop on macOS and Windows handles Host bindings first. While the body has foc
 
 Click a cell: the **⋯** above the table manages the current column and the **⋮** on the left manages the current row, with insert before/after and delete. The **+** buttons on the right and bottom append a last column or row, independent of the caret. The table icon in the top-right corner opens **Table options**.
 
-Drag a column border to resize it; widths are saved. Press Escape before releasing the drag to cancel it and restore the previous width. Row/column changes and committed width changes support consecutive undo/redo, and autosave does not clear that history. **Table options → Auto fit to available width** clears manual widths. Rows grow with their content, and wide tables scroll horizontally inside their own area. Whole-table zoom and row-height dragging are not provided.
+Drag a column border to resize it; widths are saved. Press Escape before releasing the drag to cancel it and restore the previous width. You can also focus the column-resize control on that border and press ←/→ to change the width by 16 pixels, stopping at the minimum and maximum; each keypress is its own undo step. Row/column changes and committed width changes support consecutive undo/redo, and autosave does not clear that history. **Table options → Auto fit to available width** clears manual widths. Rows grow with their content, and wide tables scroll horizontally inside their own area. Whole-table zoom and row-height dragging are not provided.
 
 Tables are limited to 200 rows and 50 columns, within the note's total node and 1 MiB size limits. Additions are refused before exceeding a limit; a width drag that would exceed it restores the previous widths and keeps your text. Tables in Trash cannot be changed. Merged cells are preserved when stored, but there are no merge/split controls.
 

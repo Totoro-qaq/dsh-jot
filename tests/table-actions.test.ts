@@ -6,7 +6,7 @@ import { CellSelection, columnResizingPluginKey, TableMap } from '@tiptap/pm/tab
 import { createJotExtensions } from '../src/client/editor-extensions.js'
 import { syncEditorContent } from '../src/client/editor-content.js'
 import { persistableTableWidthPlugin } from '../src/client/table-view.js'
-import { selectedTable, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
+import { nudgeTableColumn, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
 import { docToText, MAX_DOC_BYTES, validateRichDoc } from '../src/model.js'
 
 const paragraph = (text?: string) => ({ type: 'paragraph', ...(text ? { content: [{ type: 'text', text }] } : {}) })
@@ -297,6 +297,52 @@ function nearByteLimitEditor() {
   assert.equal(new TextEncoder().encode(JSON.stringify(validateRichDoc(editor.getJSON()))).byteLength, MAX_DOC_BYTES - 100)
   return editor
 }
+
+function columnWidths(editor: Editor) {
+  const table = editor.state.doc.firstChild!
+  const map = TableMap.get(table)
+  const widths: Array<number[] | null> = []
+  for (let row = 0; row < map.height; row++) {
+    const seen = new Set<number>()
+    for (let column = 0; column < map.width; column++) {
+      const pos = map.map[row * map.width + column]!
+      if (seen.has(pos)) continue
+      seen.add(pos)
+      widths.push(table.nodeAt(pos)!.attrs.colwidth as number[] | null)
+    }
+  }
+  return widths
+}
+
+test('keyboard column resize writes a clamped width, fills unspecified spans, and undoes one step', t => {
+  const editor = create([{ type: 'table', content: [
+    { type: 'tableRow', content: [cell('merged', { colspan: 2, colwidth: [120, 140] }), cell('right')] },
+    { type: 'tableRow', content: [cell('left'), cell('middle'), cell('end')] },
+  ] }])
+  editor.registerPlugin(history())
+  t.after(() => editor.destroy())
+  const target = select(editor, 0, 0, 0)
+  const resized = resizeTableColumn(editor.state, target, 1, 200)
+  assert.ok(resized)
+  editor.view.dispatch(closeHistory(resized))
+  assert.deepEqual(columnWidths(editor)[0], [120, 200])
+  assert.deepEqual(columnWidths(editor)[3], [200])
+  assert.equal(undoDepth(editor.state), 1)
+  const nudged = nudgeTableColumn(editor.state, selectedTable(editor.state)!, 1, TABLE_COLUMN_NUDGE, 50)
+  assert.ok(nudged)
+  editor.view.dispatch(closeHistory(nudged))
+  assert.deepEqual(columnWidths(editor)[0], [120, 200 + TABLE_COLUMN_NUDGE])
+  const clamped = resizeTableColumn(editor.state, selectedTable(editor.state)!, 0, 10)
+  editor.view.dispatch(closeHistory(clamped!))
+  assert.equal(columnWidths(editor)[0]![0], TABLE_CELL_MIN_WIDTH)
+  const capped = resizeTableColumn(editor.state, selectedTable(editor.state)!, 2, TABLE_CELL_MAX_WIDTH + 400)
+  editor.view.dispatch(closeHistory(capped!))
+  assert.equal(columnWidths(editor)[1]![0], TABLE_CELL_MAX_WIDTH)
+  assert.equal(nudgeTableColumn(editor.state, selectedTable(editor.state)!, 2, TABLE_COLUMN_NUDGE, TABLE_CELL_MAX_WIDTH), null)
+  validateRichDoc(editor.getJSON())
+  assert.equal(editor.commands.undo(), true)
+  assert.equal(columnWidths(editor)[1], null, 'undo removes the width that was not stored before')
+})
 
 test('whole-column width metadata cannot turn a near-limit valid note into an unsavable draft, and its live DOM is restored', t => {
   const editor = nearByteLimitEditor()
