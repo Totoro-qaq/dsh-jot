@@ -15,7 +15,7 @@ export const SHORTCUTS = {
   codeBlock: { mod: true, alt: true, key: 'C' }, strike: { mod: true, shift: true, key: 'S' },
   code: { mod: true, key: 'E' }, highlight: { mod: true, shift: true, key: 'H' },
   toggleTask: { mod: true, key: 'Enter' }, moveUp: { alt: true, shift: true, key: '↑' }, moveDown: { alt: true, shift: true, key: '↓' },
-  columnNarrow: { alt: true, shift: true, key: '←' }, columnWiden: { alt: true, shift: true, key: '→' },
+  columnNarrow: { mod: true, alt: true, shift: true, key: '←' }, columnWiden: { mod: true, alt: true, shift: true, key: '→' },
   indent: { key: 'Tab' }, outdent: { shift: true, key: 'Tab' },
   searchLibrary: { key: '/' }, shortcutHelp: { key: '?' },
 } satisfies Record<string, Chord>

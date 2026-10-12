@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Editor, type JSONContent } from '@tiptap/core'
 import { closeHistory, history, undoDepth } from '@tiptap/pm/history'
+import { Fragment, Slice } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
 import { createJotExtensions } from '../src/client/editor-extensions.js'
-import { linkPopoverInitialFocus } from '../src/client/LinkPopover.js'
-import { applyEditorLink, linkApplyMessage, linkClickAction, linkSelection, normalizeLinkHref, openableLinkHref, openLinkHref, removeEditorLink } from '../src/client/link-commands.js'
+import { linkPopoverFocusKey, linkPopoverInitialFocus } from '../src/client/LinkPopover.js'
+import { applyEditorLink, handleLinkClick, linkApplyMessage, linkClickAction, linkMarkHref, linkSelection, normalizeLinkHref, openableLinkHref, openLinkHref, removeEditorLink } from '../src/client/link-commands.js'
 import { validateRichDoc } from '../src/model.js'
 
 const text = (value: string, marks?: JSONContent['marks']) => ({ type: 'text', text: value, ...(marks ? { marks } : {}) })
@@ -15,6 +16,16 @@ function create(content: JSONContent[]) {
   // 无头编辑器不会挂载，StarterKit 的撤销插件要在这里补上。
   editor.registerPlugin(history())
   return editor
+}
+/** 自动链接和粘贴规则挂在插件上；无头编辑器要先登记才会在输入时运行。 */
+function mountPlugins(editor: Editor) {
+  const names = new Set(editor.state.plugins.map(plugin => (plugin.spec.key as { key?: string } | undefined)?.key))
+  for (const plugin of editor.extensionManager.plugins) {
+    const name = (plugin.spec.key as { key?: string } | undefined)?.key
+    if (name && names.has(name)) continue
+    editor.registerPlugin(plugin)
+    if (name) names.add(name)
+  }
 }
 function rangeOf(editor: Editor, needle: string) {
   let from = -1
@@ -182,6 +193,23 @@ test('inline code is not reported as linked, and a stale remove does not throw',
   assert.equal(linkPopoverInitialFocus({ readOnly: true, text: 'secret', canOpen: false }), 'dialog')
 })
 
+test('typing several characters in a new link does not retarget focus', () => {
+  const open = { id: 4, readOnly: false, placed: true }
+  const first = linkPopoverFocusKey(open)
+  assert.equal(linkPopoverInitialFocus({ readOnly: false, text: '', canOpen: false }), 'text')
+  let text = ''
+  for (const character of 'hello') {
+    text += character
+    assert.equal(linkPopoverFocusKey(open), first, text)
+    // 若聚焦效果仍依赖文字，打完第一个字就会改去选中网址。
+    assert.equal(linkPopoverInitialFocus({ readOnly: false, text, canOpen: false }), 'href')
+  }
+  assert.equal(text, 'hello')
+  assert.equal(linkPopoverFocusKey({ ...open, placed: false }), null)
+  assert.notEqual(linkPopoverFocusKey({ ...open, id: 5 }), first)
+  assert.notEqual(linkPopoverFocusKey({ ...open, readOnly: true }), first)
+})
+
 test('a plain click in an editable note only places the caret; read-only and modified clicks open', () => {
   assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href: 'https://example.com', attachment: false }), 'place-caret')
   assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: false, editable: true, href: 'example.com', attachment: false }), 'open')
@@ -202,5 +230,115 @@ test('a plain click in an editable note only places the caret; read-only and mod
   } finally {
     globalThis.open = previous
   }
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'https://user:pass@example.com', attachment: false }), 'ignore')
+  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'https://user:pass@example.com', attachment: false }), 'block')
+  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href: 'https://user:pass@example.com', attachment: false }), 'block')
+  assert.equal(linkClickAction({ button: 2, metaKey: true, ctrlKey: false, editable: false, href: 'https://user@example.com/a', attachment: false }), 'block')
+  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'https://user:pass@example.com', attachment: true }), 'ignore')
+  let prevented = 0
+  assert.equal(handleLinkClick('block', { preventDefault() { prevented++ } }, () => { throw new Error('blocked links are not opened') }), true)
+  assert.equal(handleLinkClick('ignore', { preventDefault() { prevented++ } }, () => {}), false)
+  assert.equal(prevented, 1)
+})
+
+test('editing link text keeps spaces and inline code', t => {
+  const spaced = create([paragraph(text('A  B'))])
+  t.after(() => spaced.destroy())
+  const range = rangeOf(spaced, 'A  B')
+  assert.equal(applyEditorLink(spaced.state, spaced.view.dispatch, {
+    ...range, original: 'A  B', text: 'A  C', href: 'https://example.com/spaced',
+  }), true)
+  assert.equal(spaced.state.doc.textContent, 'A  C')
+  assert.equal(linkAt(spaced, 'A  C').href, 'https://example.com/spaced')
+  const mixed = create([paragraph(text('fn', [{ type: 'code' }]), text('()'))])
+  t.after(() => mixed.destroy())
+  let from = -1
+  let to = -1
+  mixed.state.doc.descendants((node, position) => {
+    if (!node.isText) return
+    if (from < 0) from = position
+    to = position + node.text!.length
+  })
+  assert.equal(mixed.state.doc.textBetween(from, to, ''), 'fn()')
+  assert.equal(applyEditorLink(mixed.state, mixed.view.dispatch, {
+    from, to, original: 'fn()', text: 'fn(x)', href: 'https://example.com/fn',
+  }), true)
+  assert.equal(mixed.state.doc.textContent, 'fn(x)')
+  const pieces = new Map<string, string[]>()
+  mixed.state.doc.descendants(node => {
+    if (node.isText) pieces.set(node.text!, node.marks.map(mark => mark.type.name).sort())
+  })
+  assert.deepEqual(pieces.get('fn'), ['code'])
+  assert.deepEqual(pieces.get('(x)'), ['link'])
+  const codeOnly = create([paragraph(text('fn', [{ type: 'code' }]))])
+  t.after(() => codeOnly.destroy())
+  const code = rangeOf(codeOnly, 'fn')
+  const before = codeOnly.getJSON()
+  assert.equal(applyEditorLink(codeOnly.state, codeOnly.view.dispatch, {
+    ...code, original: 'fn', text: 'fnx', href: 'https://example.com/fn',
+  }), 'unsupported')
+  assert.deepEqual(codeOnly.getJSON(), before)
+})
+
+test('a stale remove does not clear a different link now at those positions', t => {
+  const editor = create([paragraph(
+    text('one', [{ type: 'link', attrs: { href: 'https://one.example' } }]),
+    text('two', [{ type: 'link', attrs: { href: 'https://two.example' } }]),
+  )])
+  t.after(() => editor.destroy())
+  const first = rangeOf(editor, 'one')
+  editor.commands.setContent({ type: 'doc', content: [paragraph(
+    text('two', [{ type: 'link', attrs: { href: 'https://two.example' } }]),
+  )] })
+  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, {
+    from: first.from, to: first.to, href: 'https://one.example', original: 'one',
+  }), false)
+  assert.equal(linkAt(editor, 'two').href, 'https://two.example')
+  const current = rangeOf(editor, 'two')
+  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, {
+    ...current, href: 'https://two.example', original: 'two',
+  }), true)
+  assert.equal(linkAt(editor, 'two').marks.includes('link'), false)
+})
+
+test('typing or pasting a credential address does not create a link', t => {
+  const editor = create([paragraph(text('go'))])
+  mountPlugins(editor)
+  t.after(() => editor.destroy())
+  let end = 1
+  editor.state.doc.descendants((node, position) => {
+    if (node.isText && node.text === 'go') end = position + node.text.length
+  })
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end))
+    .insertText(' https://user:pass@example.com '))
+  assert.match(editor.state.doc.textContent, /user:pass@example\.com/)
+  assert.equal(linkAt(editor, 'user:pass').href, '')
+  editor.view.dispatch(editor.state.tr.insertText('https://example.com '))
+  assert.equal(linkAt(editor, 'https://example.com').href, 'https://example.com')
+  const label = rangeOf(editor, 'user:pass@example.com')
+  assert.equal(editor.chain().setTextSelection(label).setLink({ href: 'https://user:pass@example.com' }).run(), false)
+  assert.equal(linkAt(editor, 'user:pass').href, '')
+  const pasted = create([paragraph(text('replace-me'))])
+  mountPlugins(pasted)
+  t.after(() => pasted.destroy())
+  rangeOf(pasted, 'replace-me')
+  const paste = (slice: Slice) => pasted.extensionManager.plugins.some(plugin =>
+    plugin.props.handlePaste?.call(plugin, pasted.view, { preventDefault() {} } as ClipboardEvent, slice) === true)
+  const slice = new Slice(Fragment.from(pasted.schema.text('https://user:pass@example.com')), 0, 0)
+  assert.equal(paste(slice), false)
+  assert.equal(pasted.state.doc.textContent, 'replace-me')
+  assert.equal(linkAt(pasted, 'replace-me').href, '')
+  const allowed = new Slice(Fragment.from(pasted.schema.text('https://example.com/docs')), 0, 0)
+  assert.equal(paste(allowed), true)
+  assert.equal(pasted.state.doc.textContent, 'replace-me')
+  assert.equal(linkAt(pasted, 'replace-me').href, 'https://example.com/docs')
+  const stored = create([paragraph(text('secret', [{ type: 'link', attrs: { href: 'https://user:pass@example.com/a' } }]))])
+  t.after(() => stored.destroy())
+  let pos = -1
+  stored.state.doc.descendants((node, position) => {
+    if (pos < 0 && node.isText && node.text === 'secret') pos = position + 1
+  })
+  const href = linkMarkHref(stored.state, pos)
+  assert.equal(href, 'https://user:pass@example.com/a')
+  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href, attachment: false }), 'block')
+  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href, attachment: false }), 'block')
 })

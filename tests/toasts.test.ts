@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { activateToast, dismissToast, emptyToastQueue, pushToast, type ToastNotice } from '../src/client/toasts.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, TOAST_ACTION_MS, TOAST_NOTICE_MS, toastDeadline, toastRemainingAfter, type ToastNotice } from '../src/client/toasts.js'
 
 const notice = (id: number, text: string, action = false): ToastNotice => ({
   id, text, ...(action ? { action: { label: 'Undo', run() {} } } : {}),
@@ -31,6 +31,24 @@ test('undo stays on screen while the app is busy, and runs only after that', () 
   assert.equal(ready.queue.visible, null)
   ready.run?.()
   assert.equal(ran, 1)
+})
+
+test('the undo timer pauses while busy and a new undo starts from a full six seconds', () => {
+  const first = toastDeadline({ id: 1, hasAction: true, busy: false, clock: null })
+  assert.equal(first.delayMs, TOAST_ACTION_MS)
+  const elapsed = toastRemainingAfter(first.clock!.remainingMs, 2_000)
+  assert.equal(elapsed, 4_000)
+  const paused = toastDeadline({ id: 1, hasAction: true, busy: true, clock: { id: 1, remainingMs: elapsed } })
+  assert.equal(paused.delayMs, null)
+  assert.equal(paused.clock?.remainingMs, 4_000)
+  const resumed = toastDeadline({ id: 1, hasAction: true, busy: false, clock: paused.clock })
+  assert.equal(resumed.delayMs, 4_000)
+  const replaced = toastDeadline({ id: 2, hasAction: true, busy: false, clock: resumed.clock })
+  assert.equal(replaced.delayMs, TOAST_ACTION_MS)
+  assert.equal(replaced.clock?.id, 2)
+  const notice = toastDeadline({ id: 3, hasAction: false, busy: true, clock: replaced.clock })
+  assert.equal(notice.delayMs, TOAST_NOTICE_MS)
+  assert.equal(notice.clock, null)
 })
 
 test('a newer undo replaces the visible undo and ordinary notices still replace each other', () => {

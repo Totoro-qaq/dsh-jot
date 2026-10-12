@@ -26,7 +26,7 @@ import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note
 import { consumeJotCommand, type JotCommandRequest } from './commands.js'
 import type { AttachmentInfo, ExportFormat, ImportSummary, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
 import type { AttachmentDialogRequest } from './attachment-dialog.js'
-import { activateToast, dismissToast, emptyToastQueue, pushToast, type ToastNotice } from './toasts.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, toastDeadline, toastRemainingAfter, type ToastNotice } from './toasts.js'
 
 export interface JotAppProps {
   mode: 'compact' | 'wide'
@@ -162,11 +162,22 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
     setToastQueue(queue => pushToast(queue, { id: ++toastSequence.current, text, action }))
   }, [])
   const dismissVisibleToast = (id: number) => setToastQueue(queue => dismissToast(queue, id))
+  const toastClock = useRef<{ id: number; remainingMs: number } | null>(null)
   useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => dismissVisibleToast(toast.id), toast.action ? 6000 : 3500)
-    return () => clearTimeout(timer)
-  }, [toast])
+    if (!toast) { toastClock.current = null; return }
+    const decision = toastDeadline({ id: toast.id, hasAction: Boolean(toast.action), busy, clock: toastClock.current })
+    toastClock.current = decision.clock
+    if (decision.delayMs === null) return
+    const started = Date.now()
+    const timer = setTimeout(() => dismissVisibleToast(toast.id), decision.delayMs)
+    return () => {
+      clearTimeout(timer)
+      // 普通通知不暂停。撤销提示在忙碌时停住，清掉计时器时记下还剩多久。
+      if (toastClock.current?.id === toast.id) toastClock.current = {
+        id: toast.id, remainingMs: toastRemainingAfter(toastClock.current.remainingMs, Date.now() - started),
+      }
+    }
+  }, [toast, busy])
   const fileInput = useRef<HTMLInputElement>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)

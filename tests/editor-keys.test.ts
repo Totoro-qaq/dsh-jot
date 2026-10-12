@@ -187,7 +187,7 @@ test('tidy moves completed to-dos to the bottom of the current list, keeps relat
   t.after(() => editor.destroy())
   caret(editor, '未完成甲')
   assert.equal(tidyCompletedTasks(editor.state), true)
-  assert.equal(tidyCompletedTasks(editor.state, editor.view.dispatch), true)
+  assert.equal(tidyCompletedTasks(editor.state, editor.view), true)
   assert.deepEqual(tasks(editor).slice(0, 5), [
     ['未完成甲', false], ['未完成乙', false], ['已完成甲', true], ['已完成乙', true], ['子项', true],
   ])
@@ -199,7 +199,7 @@ test('tidy moves completed to-dos to the bottom of the current list, keeps relat
   assert.notDeepEqual(editor.getJSON(), saved)
 })
 
-test('Alt+Shift+Left/Right resizes the current column and is consumed at the limits', t => {
+test('Mod+Alt+Shift+Left/Right resizes the current column and is consumed at the limits', t => {
   const editor = create([{ type: 'table', content: [{ type: 'tableRow', content: [
     { type: 'tableCell', attrs: { colwidth: [120] }, content: [paragraph('左')] },
     { type: 'tableCell', attrs: { colwidth: [140] }, content: [paragraph('右')] },
@@ -208,9 +208,11 @@ test('Alt+Shift+Left/Right resizes the current column and is consumed at the lim
   const width = () => editor.state.doc.firstChild!.firstChild!.firstChild!.attrs.colwidth as number[]
   caret(editor, '左')
   assert.equal(press(editor, 'ArrowRight', { alt: true, keyCode: 39 }), false, 'Alt+Right stays available for word movement and browser Back')
-  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), true)
+  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), false, 'Option+Shift+Right stays available for selecting by word')
+  assert.deepEqual(width(), [120])
+  assert.equal(press(editor, 'ArrowRight', { mod: true, alt: true, shift: true, keyCode: 39 }), true)
   assert.deepEqual(width(), [136])
-  assert.equal(press(editor, 'ArrowLeft', { alt: true, shift: true, keyCode: 37 }), true)
+  assert.equal(press(editor, 'ArrowLeft', { mod: true, alt: true, shift: true, keyCode: 37 }), true)
   assert.deepEqual(width(), [120])
   assert.equal(editor.commands.undo(), true)
   assert.deepEqual(width(), [136])
@@ -222,17 +224,17 @@ test('Alt+Shift+Left/Right resizes the current column and is consumed at the lim
   }
   setWidth(88)
   caret(editor, '左')
-  assert.equal(press(editor, 'ArrowLeft', { alt: true, shift: true, keyCode: 37 }), true)
+  assert.equal(press(editor, 'ArrowLeft', { mod: true, alt: true, shift: true, keyCode: 37 }), true)
   assert.deepEqual(width(), [88])
   setWidth(5000)
   caret(editor, '左')
-  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), true)
+  assert.equal(press(editor, 'ArrowRight', { mod: true, alt: true, shift: true, keyCode: 39 }), true)
   assert.deepEqual(width(), [5000])
   editor.setEditable(false)
-  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), false)
+  assert.equal(press(editor, 'ArrowRight', { mod: true, alt: true, shift: true, keyCode: 39 }), false)
   editor.setEditable(true)
   caret(editor, '正文')
-  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), false)
+  assert.equal(press(editor, 'ArrowRight', { mod: true, alt: true, shift: true, keyCode: 39 }), false)
   validateRichDoc(editor.getJSON())
 })
 
@@ -241,7 +243,7 @@ test('tidy is a separate undo step from typing just before and just after it', t
   t.after(() => editor.destroy())
   caret(editor, '未完成', 1)
   editor.view.dispatch(editor.state.tr.insertText('甲'))
-  assert.equal(tidyCompletedTasks(editor.state, editor.view.dispatch), true)
+  assert.equal(tidyCompletedTasks(editor.state, editor.view), true)
   assert.equal(editor.state.doc.firstChild!.firstChild!.textContent, '未甲完成')
   editor.view.dispatch(editor.state.tr.insertText('乙'))
   assert.equal(editor.state.doc.textContent.includes('乙'), true)
@@ -255,12 +257,29 @@ test('tidy is a separate undo step from typing just before and just after it', t
   assert.equal(editor.state.doc.textContent.includes('甲'), false)
 })
 
+test('tidy builds the following history step from the live editor state', t => {
+  const editor = create([{ type: 'taskList', content: [task('已完成', true), task('未完成')] }])
+  t.after(() => editor.destroy())
+  caret(editor, '未完成')
+  const seen: Array<{ doc: object; live: object }> = []
+  const view = {
+    get state() { return editor.view.state },
+    dispatch(tr: { doc: object }) {
+      seen.push({ doc: tr.doc, live: editor.view.state.doc })
+      editor.view.dispatch(tr as never)
+    },
+  }
+  assert.equal(tidyCompletedTasks(editor.state, view as never), true)
+  assert.equal(seen.length, 2)
+  assert.equal(seen[1]!.doc, seen[1]!.live, 'the second transaction must be the view state, not a locally applied copy')
+})
+
 test('tidy does nothing when completed items are already last, so it adds no undo step', t => {
   const editor = create([{ type: 'taskList', content: [task('未完成'), task('已完成', true), task('也完成', true)] }])
   t.after(() => editor.destroy())
   caret(editor, '未完成')
   const before = editor.getJSON()
-  assert.equal(tidyCompletedTasks(editor.state, editor.view.dispatch), false)
+  assert.equal(tidyCompletedTasks(editor.state, editor.view), false)
   caret(editor, '已完成')
   assert.equal(tidyCompletedTasks(editor.state), false, 'a list of only trailing completed items is already tidy')
   const done = create([{ type: 'taskList', content: [task('一', true), task('二', true)] }, paragraph('普通段落')])

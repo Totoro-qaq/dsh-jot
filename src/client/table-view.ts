@@ -126,8 +126,9 @@ function visibleColumnWidth(view: EditorView, tablePos: number, column: number, 
 }
 
 /**
- * 表格里 Tab 用来换单元格。Alt+Shift+←／→ 调整当前列。
+ * 表格里 Tab 用来换单元格。Mod+Alt+Shift+←／→ 调整当前列。
  * 不用 Alt+←／→：那会抢走 macOS 的按词移动，到最小／最大宽度时还会漏给浏览器当成后退。
+ * 不用 Alt+Shift+←／→：那是 macOS 的按词选择。
  * 也不用 Mod+Alt+←／→：Chromium 用它切换标签，Windows 用来旋转屏幕，GNOME 用来切换工作区。
  * 光标在可编辑的表格里时始终吃掉这个键，宽度不变也不交给浏览器。
  */
@@ -149,8 +150,8 @@ export const JotTableKeys = Extension.create({
       return true
     }
     return {
-      'Alt-Shift-ArrowLeft': nudge(-TABLE_COLUMN_NUDGE),
-      'Alt-Shift-ArrowRight': nudge(TABLE_COLUMN_NUDGE),
+      'Mod-Alt-Shift-ArrowLeft': nudge(-TABLE_COLUMN_NUDGE),
+      'Mod-Alt-Shift-ArrowRight': nudge(TABLE_COLUMN_NUDGE),
     }
   },
 })

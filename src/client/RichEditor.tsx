@@ -14,8 +14,8 @@ import { JotActionIcon, type JotActionIconName } from './icons.js'
 import { TableControls } from './TableControls.js'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../model.js'
 import { applySlashItem, filterSlashItems, slashLabel, slashMatch, type SlashItem, type SlashMatch } from './slash-menu.js'
-import { applyEditorLink, linkApplyMessage, linkClickAction, linkSelection, openLinkHref, openableLinkHref, removeEditorLink } from './link-commands.js'
-import { linkPopoverInitialFocus } from './LinkPopover.js'
+import { applyEditorLink, handleLinkClick, linkApplyMessage, linkClickAction, linkMarkHref, linkSelection, openLinkHref, openableLinkHref, removeEditorLink } from './link-commands.js'
+import { linkPopoverFocusKey, linkPopoverInitialFocus } from './LinkPopover.js'
 import { LinkPopover } from './LinkPopover.js'
 import { tidyCompletedTasks } from './list-commands.js'
 import { ariaShortcut, shortcutLabel, SHORTCUTS, withShortcut, type ShortcutId } from './shortcut-labels.js'
@@ -178,19 +178,19 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       extensions: createJotExtensions({ resolveAttachmentUrl: id => callbacks.current.resolveAttachmentUrl?.(id) ?? managedAttachmentUrl(id),
         locale: () => callbacks.current.locale }),
       editorProps: {
-        handleClick: (view, _pos, event) => {
+        handleClick: (view, pos, event) => {
           const target = event.target
           const anchor = target instanceof Element ? target.closest('a') : null
           const inside = Boolean(anchor && view.dom.contains(anchor))
+          if (!inside || !anchor) return false
+          const domHref = anchor.getAttribute('href') || null
+          // 已保存的账号口令地址在渲染时会被写成空 href，点击仍要按文档里的地址拦住。
+          const href = linkMarkHref(view.state, pos) || domHref
           const action = linkClickAction({
             button: event.button, metaKey: event.metaKey, ctrlKey: event.ctrlKey, editable: view.editable,
-            href: inside ? anchor?.getAttribute('href') ?? null : null,
-            attachment: Boolean(anchor?.hasAttribute('data-jot-attachment-id') || anchor?.getAttribute('data-type') === 'jot-attachment'),
+            href, attachment: Boolean(anchor?.hasAttribute('data-jot-attachment-id') || anchor?.getAttribute('data-type') === 'jot-attachment'),
           })
-          if (action === 'ignore') return false
-          if (action === 'open') openLinkHref(anchor?.getAttribute('href') ?? '')
-          event.preventDefault()
-          return true
+          return handleLinkClick(action, event, () => { openLinkHref(href ?? '') })
         },
         handleKeyDown: (_view, event) => {
           const menu = slashState.current
@@ -353,15 +353,18 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
     const left = Math.min(Math.max(8, link.caret.left), Math.max(8, view.innerWidth - width - 8))
     setLinkPlacement(previous => previous?.left === left && previous.top === top ? previous : { left, top })
   }, [link?.id, link?.caret.left, link?.caret.top, link?.caret.bottom, linkError])
+  const linkFocusKey = link && linkPlacement ? linkPopoverFocusKey({ id: link.id, readOnly, placed: true }) : null
   useEffect(() => {
-    if (!link || !linkPlacement) return
-    const choice = linkPopoverInitialFocus({ readOnly, text: link.text, canOpen: Boolean(openableLinkHref(link.href)) })
+    const current = linkState.current
+    if (!linkFocusKey || !current) return
+    // 只在打开、只读变化或浮层就位时聚焦。文字和网址随输入变化，不能每次都重新选中。
+    const choice = linkPopoverInitialFocus({ readOnly, text: current.text, canOpen: Boolean(openableLinkHref(current.href)) })
     const selector = choice === 'href' ? '.jot-link-href' : choice === 'text' ? '.jot-link-text'
       : choice === 'open' ? '.jot-link-open' : '[role="dialog"]'
     const field = linkMenu.current?.querySelector<HTMLElement>(selector)
     field?.focus()
     if (field instanceof HTMLInputElement) field.select()
-  }, [link?.id, link?.text, link?.href, readOnly, Boolean(linkPlacement)])
+  }, [linkFocusKey])
   useEffect(() => {
     if (!linkOpen) return
     const page = root.current?.ownerDocument
@@ -500,7 +503,7 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
           title={en ? 'Move completed items to the bottom' : '把已完成项移到底部'}
           disabled={readOnly || !tidyCompletedTasks(editor.state)}
           onMouseDown={event => event.preventDefault()}
-          onClick={() => { const current = instance.current; if (current) tidyCompletedTasks(current.state, current.view.dispatch) }}>
+          onClick={() => { const current = instance.current; if (current) tidyCompletedTasks(current.state, current.view) }}>
           <span className="jot-editor-control-label">{en ? 'Tidy' : '整理'}</span>
         </button>}
         <button type="button" className="jot-format jot-editor-control jot-editor-control-icon-only jot-format-link"

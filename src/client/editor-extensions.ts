@@ -5,7 +5,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { Color, TextStyle } from '@tiptap/extension-text-style'
 import Highlight from '@tiptap/extension-highlight'
-import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizePaletteColor } from '../model.js'
+import { HIGHLIGHT_COLORS, TEXT_COLORS, linkHrefHasCredentials, normalizePaletteColor } from '../model.js'
 import { JotTable, JotTableKeys, JotTableView, PersistableTableWidths } from './table-view.js'
 import { TABLE_CELL_MIN_WIDTH } from './table-actions.js'
 import { JotHeadingKeys, JotListKeys } from './list-commands.js'
@@ -130,14 +130,33 @@ function managedNode(name: 'image' | 'attachment', resolve: (id: string) => stri
   })
 }
 
+/**
+ * 与 Tiptap Link 的默认自动链接规则相同，但带账号口令的地址一律不链接。
+ * 只改 `isAllowedUri` 不够：选区非空时的粘贴只看 `shouldAutoLink`。
+ */
+function jotShouldAutoLink(url: string): boolean {
+  if (linkHrefHasCredentials(url)) return false
+  const hasProtocol = /^[a-z][a-z0-9+.-]*:\/\//iu.test(url)
+  const hasMaybeProtocol = /^[a-z][a-z0-9+.-]*:/iu.test(url)
+  if (hasProtocol || (hasMaybeProtocol && !url.includes('@'))) return true
+  const hostname = (url.includes('@') ? url.split('@').pop() ?? '' : url).split(/[/?#:]/u)[0] ?? ''
+  if (/^\d{1,3}(\.\d{1,3}){3}$/u.test(hostname)) return false
+  if (!hostname.includes('.')) return false
+  return true
+}
+
 /** Shared by the actual editor and headless schema/command regression tests. */
 export function createJotExtensions(options: JotExtensionOptions = {}): Extensions {
   const resolve = options.resolveAttachmentUrl ?? managedAttachmentUrl
   const locale = options.locale ?? (() => 'zh' as const)
   return [StarterKit.configure({
     heading: { levels: [1, 2, 3, 4, 5, 6] },
-    // 编辑时单击链接只移动光标，打开地址交给浮层。只读笔记仍由浏览器跟随链接。
-    link: { openOnClick: false },
+    // 编辑时单击只移动光标。带账号口令的地址不自动链接，点击时也不交给浏览器。
+    link: {
+      openOnClick: false,
+      isAllowedUri: (url, ctx) => ctx.defaultValidate(url) && !linkHrefHasCredentials(url),
+      shouldAutoLink: jotShouldAutoLink,
+    },
   }), JotHeadingKeys, JotListKeys, JotTableKeys,
     TaskList, JotTaskItem.configure({ nested: true, a11y: { checkboxLabel: node => taskCheckboxLabel(node.textContent, locale()) } }),
     JotTable.configure({ resizable: true, renderWrapper: true, cellMinWidth: TABLE_CELL_MIN_WIDTH,

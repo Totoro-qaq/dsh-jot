@@ -4,16 +4,16 @@
 
 ### Writing
 
-- Add, edit, open or remove a link from the toolbar or with Mod+K. The popover is focusable and Escape closes it. Pasted addresses are still detected automatically. A plain click in an editable note places the caret; Ctrl/Command-click, or a click in a read-only note, opens the address. Mod+K stays inside the editor and is not registered with the host. Leaving the link text unchanged keeps its spaces and any formatting that covers only part of the selection. Addresses that contain a username or password are rejected; a note that already has one still loads, and Open does nothing.
+- Add, edit, open or remove a link from the toolbar or with Mod+K. The popover is focusable and Escape closes it. Pasted addresses are still detected automatically. A plain click in an editable note places the caret; Ctrl/Command-click, or a click in a read-only note, opens the address. Mod+K stays inside the editor and is not registered with the host. Link text keeps its spaces and partial formatting, including when the text is edited; inline code in that text stays code. Addresses that contain a username or password are rejected on insert, paste and autolink, and a click does not follow them, including in a read-only note. A note that already has one still loads, and Open does nothing. Typing in the popover does not move focus off the field you are editing.
 - **Tidy** on the toolbar moves completed items in the current checklist to the bottom. Incomplete and completed items each keep their relative order, nested lists move with their parent item, and Undo restores only that reorder, not typing done just before or after it.
 
 ### Fixed
 
 - Shift+F10 and the keyboard menu key open the same note menu as a right-click when a note row has focus. F10 alone is left to the browser. Selection mode still has no menu.
 - The title and the editor body show the accent outline while they have keyboard focus.
-- With the caret in a table cell, Alt+Shift+Left/Right (Option+Shift on macOS) changes that column's width by 16 pixels. Alt+Left/Right is left to word movement and the browser. The chord is consumed inside an editable table even when the width is already at its limit. Tab still moves between cells. Left and Right do the same when the column-resize control itself has focus. Dragging a border is unchanged, each keypress is its own undo step, and the new width is announced to screen readers.
-- A notice that arrives while Trash's Undo is still showing no longer replaces that Undo. The latest ordinary notice appears after the Undo is dismissed or expires. Clicking Undo while another action is still running leaves the Undo in place.
-- Removing a link after the note has moved returns quietly. The link popover is measured from its card. A read-only note focuses Open, or the dialog when Open is unavailable. Inline code is not reported as linked.
+- With the caret in a table cell, Mod+Alt+Shift+Left/Right (Option+Shift+Command on macOS) changes that column's width by 16 pixels. Alt+Left/Right stays available for word movement, and Option+Shift+Left/Right stays available for selecting by word. The chord is consumed inside an editable table even when the width is already at its limit. Tab still moves between cells. Left and Right do the same when the column-resize control itself has focus. Dragging a border is unchanged, each keypress is its own undo step, and the new width is announced to screen readers.
+- A notice that arrives while Trash's Undo is still showing no longer replaces that Undo. The latest ordinary notice appears after the Undo is dismissed or expires. Clicking Undo while another action is still running leaves the Undo in place, and its six-second timer pauses until that action finishes.
+- Removing a link after the note has moved returns quietly, and does not remove a different link that now occupies those positions. The link popover is measured from its card. A read-only note focuses Open, or the dialog when Open is unavailable. Inline code is not reported as linked.
 
 ## 0.2.11 — 2026-10-11
 

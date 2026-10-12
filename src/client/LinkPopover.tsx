@@ -23,6 +23,15 @@ export function linkPopoverInitialFocus(input: { readOnly: boolean; text: string
   return input.canOpen ? 'open' : 'dialog'
 }
 
+/**
+ * 浮层该在什么时候重新聚焦。只看这一次打开的编号、只读和是否已经定位。
+ * 文字或网址变了不能放进依赖，否则新链接打第一个字就会从文字跳到网址并全选。
+ */
+export function linkPopoverFocusKey(input: { id: number; readOnly: boolean; placed: boolean }): string | null {
+  if (!input.placed) return null
+  return `${input.id}:${input.readOnly ? 1 : 0}`
+}
+
 /** 工具栏风格的链接浮层：打开后焦点进入输入框，Escape 关闭。 */
 export function LinkPopover({ locale, readOnly, text, href, existing, canOpen, error, onText, onHref, onSubmit, onOpen, onRemove, onClose }: LinkPopoverProps) {
   const en = locale === 'en'

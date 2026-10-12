@@ -6,7 +6,7 @@
  * literal text. Browser-safe.
  */
 import {
-  StoreError, HIGHLIGHT_COLORS, MAX_TEXT_LENGTH, TEXT_COLORS, boundedString, normalizePaletteColor, validateRichDoc,
+  StoreError, HIGHLIGHT_COLORS, MAX_TEXT_LENGTH, TEXT_COLORS, boundedString, linkHrefHasCredentials, normalizePaletteColor, validateRichDoc,
   type RichDoc, type RichMark, type RichNode,
 } from './model.js'
 
@@ -359,12 +359,7 @@ function codeClose(source: string, from: number, length: number): number {
 export function safeHref(value: string): string | undefined {
   if (!/^(?:https?:\/\/|mailto:|tel:|#)/iu.test(value) || /[\u0000-\u0020]/u.test(value) || value.length > 2_048) return undefined
   // 导入时不新建带账号口令的链接。已经保存在笔记里的这类地址仍由 model 原样加载。
-  if (/^https?:\/\//iu.test(value)) {
-    try {
-      const url = new URL(value)
-      if (url.username !== '' || url.password !== '') return undefined
-    } catch { /* 解析失败的地址继续交给后面的文档校验 */ }
-  }
+  if (linkHrefHasCredentials(value)) return undefined
   return value
 }
 

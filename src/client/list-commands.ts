@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
 import { Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 
 type Dispatch = ((tr: Transaction) => void) | undefined
 const LIST_ITEMS = new Set(['listItem', 'taskItem'])
@@ -62,7 +63,7 @@ const completedTask = (node: ProseMirrorNode) => node.type.name === 'taskItem' &
  * 把当前核对清单里已勾选的项移到底部。未完成和已完成各自保持原来的相对顺序，
  * 嵌套清单随所属项一起移动，不打散。已经整理好、或没有可移动的项时不产生撤销记录。
  */
-export function tidyCompletedTasks(state: EditorState, dispatch?: Dispatch): boolean {
+export function tidyCompletedTasks(state: EditorState, view?: EditorView): boolean {
   const depth = sharedAncestor(state, new Set(['taskList']))
   if (depth === null) return false
   const { $from } = state.selection
@@ -77,7 +78,7 @@ export function tidyCompletedTasks(state: EditorState, dispatch?: Dispatch): boo
   }
   if (!needsMove) return false
   const ordered = [...children.filter(child => !completedTask(child)), ...children.filter(completedTask)]
-  if (!dispatch) return true
+  if (!view) return true
   const start = $from.start(depth)
   const tr = state.tr.replaceWith(start, $from.end(depth), Fragment.from(ordered))
   const remap = (pos: number, $pos: ResolvedPos) => {
@@ -93,18 +94,18 @@ export function tidyCompletedTasks(state: EditorState, dispatch?: Dispatch): boo
   const head = remap(state.selection.head, state.doc.resolve(state.selection.head))
   const selection = state.selection instanceof TextSelection
     ? TextSelection.create(tr.doc, anchor, head) : Selection.near(tr.doc.resolve(head))
-  dispatchOwnStep(state, tr.setSelection(selection).scrollIntoView(), dispatch)
+  dispatchOwnStep(view, tr.setSelection(selection).scrollIntoView())
   return true
 }
 
 /**
  * 这一步自己成为撤销记录，并且不并进前后 500 毫秒内的输入。
  * closeHistory 会把上一段历史切开；空的第二次调用把 prevTime 置 0，后面的输入另起一步。
+ * 第二次必须用视图上的当前状态。本地 apply 出来的文档即使内容相同也不是同一个对象，插件追加的步骤会对不上。
  */
-function dispatchOwnStep(state: EditorState, tr: Transaction, dispatch: (tr: Transaction) => void) {
-  const closed = closeHistory(tr)
-  dispatch(closed)
-  dispatch(closeHistory(state.applyTransaction(closed).state.tr))
+function dispatchOwnStep(view: EditorView, tr: Transaction) {
+  view.dispatch(closeHistory(tr))
+  view.dispatch(closeHistory(view.state.tr))
 }
 
 /** Keys for checklist work; they only act inside list items, so other blocks keep their defaults. */

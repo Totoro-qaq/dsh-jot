@@ -2,7 +2,7 @@ import { getMarkRange } from '@tiptap/core'
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { TextSelection } from '@tiptap/pm/state'
-import { validateRichDoc } from '../model.js'
+import { linkHrefHasCredentials, validateRichDoc } from '../model.js'
 import type { JotLocale } from './types.js'
 
 type Dispatch = ((tr: Transaction) => void) | undefined
@@ -41,7 +41,7 @@ export function normalizeLinkHref(raw: string): string | null {
     try { url = new URL(value) } catch { return null }
     if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname) return null
     // 带账号口令的地址不写入、也不打开。已经存在的笔记仍能加载，见 model 的校验。
-    if (url.username !== '' || url.password !== '') return null
+    if (linkHrefHasCredentials(value)) return null
     // 用户没写协议时，单词不能变成链接；localhost 和带点的主机名可以。
     if (!SCHEME.test(raw.trim()) && url.hostname !== 'localhost' && !url.hostname.includes('.')) return null
   }
@@ -94,14 +94,81 @@ export function linkSelection(state: EditorState): LinkSelection {
   return { from, to, text: state.doc.textBetween(from, to, '\n'), href: hrefInRange(state.doc, from, to) }
 }
 
-function marksAcross(state: EditorState, from: number, to: number): readonly Mark[] {
-  if (from === to) return state.storedMarks ?? state.doc.resolve(from).marks()
-  let found: readonly Mark[] | null = null
-  state.doc.nodesBetween(from, to, node => {
-    if (!node.isText) return
-    found = found === null ? node.marks : found.filter(mark => mark.isInSet(node.marks))
+function excludesLink(mark: Mark, linkType: Mark['type']): boolean {
+  return mark.type !== linkType && (mark.type.excludes(linkType) || linkType.excludes(mark.type))
+}
+
+/** 选区里每个字符的标记。下标与 `textBetween` 对齐，同一父节点内不会插入换行。 */
+function marksAt(state: EditorState, from: number, to: number): (index: number) => readonly Mark[] {
+  const slices: Array<{ text: string; marks: readonly Mark[] }> = []
+  if (from < to) state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText || !node.text) return
+    const text = node.text.slice(Math.max(0, from - pos), Math.min(node.text.length, to - pos))
+    if (text) slices.push({ text, marks: node.marks })
   })
-  return found ?? []
+  return index => {
+    let cursor = 0
+    for (const slice of slices) {
+      if (index < cursor + slice.text.length) return slice.marks
+      cursor += slice.text.length
+    }
+    return []
+  }
+}
+
+function sameMarks(left: readonly Mark[], right: readonly Mark[]): boolean {
+  return left.length === right.length && left.every(mark => mark.isInSet(right))
+}
+
+interface TextPiece { text: string; marks: readonly Mark[] }
+
+/**
+ * 按公共前缀和后缀把新文字对齐到旧文字，逐字保留原来的标记。
+ * 中间被替换或插入的一段继承被替换字符的公共标记；纯插入则继承相邻字符。
+ */
+function piecesForEdit(original: string, next: string, markAt: (index: number) => readonly Mark[]): TextPiece[] {
+  let prefix = 0
+  const limit = Math.min(original.length, next.length)
+  while (prefix < limit && original[prefix] === next[prefix]) prefix++
+  let suffix = 0
+  while (
+    suffix < original.length - prefix && suffix < next.length - prefix
+    && original[original.length - 1 - suffix] === next[next.length - 1 - suffix]
+  ) suffix++
+  const pieces: TextPiece[] = []
+  const push = (text: string, marks: readonly Mark[]) => {
+    if (!text) return
+    const last = pieces.at(-1)
+    if (last && sameMarks(last.marks, marks)) last.text += text
+    else pieces.push({ text, marks: [...marks] })
+  }
+  for (let index = 0; index < prefix; index++) push(next[index]!, markAt(index))
+  const middle = next.slice(prefix, next.length - suffix)
+  if (middle) {
+    const replacedEnd = original.length - suffix
+    let inherited: readonly Mark[] = []
+    if (prefix < replacedEnd) {
+      inherited = markAt(prefix)
+      for (let index = prefix + 1; index < replacedEnd; index++) {
+        const there = markAt(index)
+        inherited = inherited.filter(mark => mark.isInSet(there))
+      }
+    } else if (prefix > 0) inherited = markAt(prefix - 1)
+    else if (suffix > 0) inherited = markAt(replacedEnd)
+    push(middle, inherited)
+  }
+  for (let index = next.length - suffix; index < next.length; index++) {
+    push(next[index]!, markAt(original.length - (next.length - index)))
+  }
+  return pieces
+}
+
+function rangeExcludesLink(state: EditorState, from: number, to: number, linkType: Mark['type']): boolean {
+  let excluded = false
+  state.doc.nodesBetween(from, to, node => {
+    if (node.isText && node.marks.some(mark => excludesLink(mark, linkType))) excluded = true
+  })
+  return excluded
 }
 
 function blocksLink(doc: ProseMirrorNode, from: number, to: number): boolean {
@@ -130,8 +197,9 @@ export function linkApplyMessage(result: LinkApplyFailure, locale: JotLocale): s
 }
 
 /**
- * 给选区加上或改写链接。文字没改时只加标记；文字有变化时在同一段内替换，并保留整段都有的其它格式。
- * 一次事务，撤销一步即可还原。
+ * 给选区加上或改写链接。文字没改时只加标记。
+ * 文字有变化时按前缀和后缀对齐，保留空格和每个字符原有的格式；行内代码不能带链接，就留在代码里。
+ * 整段都不能加链接时不改文档。一次事务，撤销一步即可还原。
  */
 export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   from: number; to: number; original: string; text: string; href: string
@@ -144,33 +212,42 @@ export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   const href = normalizeLinkHref(input.href)
   if (!href) return 'invalid-href'
   if (blocksLink(state.doc, from, to)) return 'unsupported'
-  // 文字没改时只加链接标记，保留首尾空白、连续空格，以及只覆盖其中一段的粗体等。
   const unchanged = input.text === input.original
   const sameParent = from === to || state.doc.resolve(from).sameParent(state.doc.resolve(to))
-  let replacement: string | null = null
+  const mark = link.create({ href })
+  let nodes: ProseMirrorNode[] | null = null
   if (!unchanged) {
-    replacement = input.text.replace(/\s+/gu, ' ').trim()
-    if (!replacement) return 'empty-text'
+    // 只拒绝纯空白。用户留下的连续空格和首尾空格都要写回去。
+    if (input.text.trim() === '') return 'empty-text'
     if (!sameParent) return 'unsupported'
+    nodes = []
+    let linked = false
+    for (const piece of piecesForEdit(input.original, input.text, marksAt(state, from, to))) {
+      const blocked = piece.marks.some(item => excludesLink(item, link))
+      const kept = piece.marks.filter(item => item.type !== link && (blocked || !excludesLink(item, link)))
+      let node: ProseMirrorNode
+      try { node = state.schema.text(piece.text, blocked ? kept : [...kept, mark]) } catch { return 'unsupported' }
+      if (!blocked) linked = true
+      nodes.push(node)
+    }
+    // 整段都是行内代码时不加链接，也不把代码标记剥掉。
+    if (!linked) return 'unsupported'
   } else if (from === to || input.text === '') {
     return 'empty-text'
+  } else if (rangeExcludesLink(state, from, to, link)) {
+    return 'unsupported'
   }
   if (!dispatch) return true
-  const mark = link.create({ href })
   let tr = state.tr
   let end = to
-  if (replacement !== null) {
-    const kept = marksAcross(state, from, to).filter(item =>
-      item.type !== link && !item.type.excludes(mark.type) && !mark.type.excludes(item.type))
-    let node
-    try { node = state.schema.text(replacement, [...kept, mark]) } catch { return 'unsupported' }
-    tr = tr.replaceWith(from, to, node)
-    end = from + replacement.length
+  if (nodes) {
+    tr = tr.replaceWith(from, to, nodes)
+    end = from + input.text.length
   } else {
     tr = tr.addMark(from, to, mark)
+    // 文字没改时，链接必须盖住整段，不能只加上一部分还报成功。
+    if (!rangeHasHref(tr.doc, from, end, href)) return 'unsupported'
   }
-  // 行内代码会排除其它标记。没有真正加上链接时不能报成功，也不留下只覆盖一部分的结果。
-  if (!rangeHasHref(tr.doc, from, end, href)) return 'unsupported'
   if (!tr.docChanged) return true
   try { validateRichDoc(tr.doc.toJSON()) } catch { return 'unsupported' }
   dispatch(tr.setSelection(TextSelection.create(tr.doc, from, end)).scrollIntoView())
@@ -191,8 +268,13 @@ function rangeHasHref(doc: ProseMirrorNode, from: number, to: number, href: stri
   return found && covered
 }
 
-/** 去掉选区上的链接。光标收起时先扩到整段链接。位置已经失效时返回 false，不抛错。 */
-export function removeEditorLink(state: EditorState, dispatch: Dispatch, range: { from: number; to: number }): boolean {
+/**
+ * 去掉选区上的链接。光标收起时先扩到整段链接。
+ * 位置还落在另一条链接上时，地址或原文对不上就不动它。位置越界时返回 false，不抛错。
+ */
+export function removeEditorLink(state: EditorState, dispatch: Dispatch, range: {
+  from: number; to: number; href?: string | null; original?: string
+}): boolean {
   const link = state.schema.marks.link
   if (!link) return false
   let { from, to } = range
@@ -205,6 +287,8 @@ export function removeEditorLink(state: EditorState, dispatch: Dispatch, range: 
     to = found.to
   }
   if (from >= to || from < 0 || to > size || !state.doc.rangeHasMark(from, to, link)) return false
+  if (range.href != null && hrefInRange(state.doc, from, to) !== range.href) return false
+  if (range.original !== undefined && state.doc.textBetween(from, to, '\n') !== range.original) return false
   if (!dispatch) return true
   const tr = state.tr.removeMark(from, to, link)
   if (!tr.docChanged) return false
@@ -221,9 +305,33 @@ export interface LinkClickProbe {
   attachment: boolean
 }
 
-/** 编辑时单击只落光标；只读或按住主修饰键才打开。附件卡片仍走原来的预览。 */
-export function linkClickAction(input: LinkClickProbe): 'ignore' | 'open' | 'place-caret' {
-  if (input.button !== 0 || input.attachment || !input.href) return 'ignore'
+/** 点击处文档里的链接地址。渲染成空 href 时仍以标记为准，避免点下去被浏览器当成当前页。 */
+export function linkMarkHref(state: EditorState, pos: number): string | null {
+  const link = state.schema.marks.link
+  if (!link) return null
+  const $pos = state.doc.resolve(Math.max(0, Math.min(pos, state.doc.content.size)))
+  const hrefOf = (marks: readonly Mark[] | undefined) => {
+    const mark = marks ? link.isInSet(marks) : undefined
+    const href = mark ? String(mark.attrs.href ?? '') : ''
+    return href || null
+  }
+  return hrefOf($pos.marks()) ?? hrefOf($pos.nodeAfter?.marks) ?? hrefOf($pos.nodeBefore?.marks)
+}
+
+/** 编辑时单击只落光标；只读或按住主修饰键才打开。带账号口令的地址一律拦截，附件卡片仍走原来的预览。 */
+export function linkClickAction(input: LinkClickProbe): 'ignore' | 'open' | 'place-caret' | 'block' {
+  if (input.attachment || !input.href) return 'ignore'
+  // 只读、辅助按钮和修饰键点击也要拦住，否则浏览器会跟着 href 导航。
+  if (linkHrefHasCredentials(input.href)) return 'block'
+  if (input.button !== 0) return 'ignore'
   if (!input.editable || input.metaKey || input.ctrlKey) return openableLinkHref(input.href) ? 'open' : 'ignore'
   return 'place-caret'
+}
+
+/** 忽略时交给浏览器。拦截、打开或落光标都要 preventDefault，只读笔记也一样。 */
+export function handleLinkClick(action: 'ignore' | 'open' | 'place-caret' | 'block', event: { preventDefault(): void }, open: () => void): boolean {
+  if (action === 'ignore') return false
+  if (action === 'open') open()
+  event.preventDefault()
+  return true
 }
