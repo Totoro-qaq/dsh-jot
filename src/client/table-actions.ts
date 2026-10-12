@@ -138,6 +138,16 @@ export function resizeTableColumn(state: EditorState, target: TableTarget, colum
   return tr.scrollIntoView()
 }
 
+export interface ColumnWidthSample { key: string; width: number | null }
+
+/**
+ * 同一列的已保存宽度变了才返回新宽度。第一次看到这一列、换到另一列、或宽度被清掉时不播报。
+ */
+export function columnWidthChange(previous: ColumnWidthSample | null, next: ColumnWidthSample): number | null {
+  if (!previous || previous.key !== next.key || previous.width === next.width || next.width === null) return null
+  return next.width
+}
+
 /** 在现有宽度（或实测宽度）上增减一列。到达上下限时不产生新的撤销步骤。 */
 export function nudgeTableColumn(state: EditorState, target: TableTarget, column: number, delta: number, measured: number): Transaction | null {
   const table = state.doc.nodeAt(target.tablePos)

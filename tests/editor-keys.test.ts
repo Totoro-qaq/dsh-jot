@@ -199,7 +199,7 @@ test('tidy moves completed to-dos to the bottom of the current list, keeps relat
   assert.notDeepEqual(editor.getJSON(), saved)
 })
 
-test('Alt+Left/Right resizes the column holding the caret; the same keys do nothing outside a table', t => {
+test('Alt+Shift+Left/Right resizes the current column and is consumed at the limits', t => {
   const editor = create([{ type: 'table', content: [{ type: 'tableRow', content: [
     { type: 'tableCell', attrs: { colwidth: [120] }, content: [paragraph('左')] },
     { type: 'tableCell', attrs: { colwidth: [140] }, content: [paragraph('右')] },
@@ -207,17 +207,52 @@ test('Alt+Left/Right resizes the column holding the caret; the same keys do noth
   t.after(() => editor.destroy())
   const width = () => editor.state.doc.firstChild!.firstChild!.firstChild!.attrs.colwidth as number[]
   caret(editor, '左')
-  assert.equal(press(editor, 'ArrowRight', { alt: true, keyCode: 39 }), true)
+  assert.equal(press(editor, 'ArrowRight', { alt: true, keyCode: 39 }), false, 'Alt+Right stays available for word movement and browser Back')
+  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), true)
   assert.deepEqual(width(), [136])
-  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), false, 'list movement keeps Shift')
-  assert.deepEqual(width(), [136])
-  assert.equal(press(editor, 'ArrowLeft', { alt: true, keyCode: 37 }), true)
+  assert.equal(press(editor, 'ArrowLeft', { alt: true, shift: true, keyCode: 37 }), true)
   assert.deepEqual(width(), [120])
   assert.equal(editor.commands.undo(), true)
   assert.deepEqual(width(), [136])
+  const setWidth = (value: number) => {
+    let pos = -1
+    editor.state.doc.descendants((node, position) => { if (pos < 0 && node.type.name === 'tableCell') pos = position })
+    const cell = editor.state.doc.nodeAt(pos)!
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, null, { ...cell.attrs, colwidth: [value] }))
+  }
+  setWidth(88)
+  caret(editor, '左')
+  assert.equal(press(editor, 'ArrowLeft', { alt: true, shift: true, keyCode: 37 }), true)
+  assert.deepEqual(width(), [88])
+  setWidth(5000)
+  caret(editor, '左')
+  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), true)
+  assert.deepEqual(width(), [5000])
+  editor.setEditable(false)
+  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), false)
+  editor.setEditable(true)
   caret(editor, '正文')
-  assert.equal(press(editor, 'ArrowRight', { alt: true, keyCode: 39 }), false)
+  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), false)
   validateRichDoc(editor.getJSON())
+})
+
+test('tidy is a separate undo step from typing just before and just after it', t => {
+  const editor = create([{ type: 'taskList', content: [task('已完成', true), task('未完成')] }])
+  t.after(() => editor.destroy())
+  caret(editor, '未完成', 1)
+  editor.view.dispatch(editor.state.tr.insertText('甲'))
+  assert.equal(tidyCompletedTasks(editor.state, editor.view.dispatch), true)
+  assert.equal(editor.state.doc.firstChild!.firstChild!.textContent, '未甲完成')
+  editor.view.dispatch(editor.state.tr.insertText('乙'))
+  assert.equal(editor.state.doc.textContent.includes('乙'), true)
+  assert.equal(editor.commands.undo(), true)
+  assert.equal(editor.state.doc.textContent.includes('乙'), false)
+  assert.equal(editor.state.doc.firstChild!.firstChild!.textContent, '未甲完成')
+  assert.equal(editor.commands.undo(), true)
+  assert.equal(editor.state.doc.firstChild!.firstChild!.textContent, '已完成')
+  assert.equal(editor.state.doc.textContent.includes('甲'), true)
+  assert.equal(editor.commands.undo(), true)
+  assert.equal(editor.state.doc.textContent.includes('甲'), false)
 })
 
 test('tidy does nothing when completed items are already last, so it adds no undo step', t => {

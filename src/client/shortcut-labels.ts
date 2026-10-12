@@ -15,6 +15,7 @@ export const SHORTCUTS = {
   codeBlock: { mod: true, alt: true, key: 'C' }, strike: { mod: true, shift: true, key: 'S' },
   code: { mod: true, key: 'E' }, highlight: { mod: true, shift: true, key: 'H' },
   toggleTask: { mod: true, key: 'Enter' }, moveUp: { alt: true, shift: true, key: '↑' }, moveDown: { alt: true, shift: true, key: '↓' },
+  columnNarrow: { alt: true, shift: true, key: '←' }, columnWiden: { alt: true, shift: true, key: '→' },
   indent: { key: 'Tab' }, outdent: { shift: true, key: 'Tab' },
   searchLibrary: { key: '/' }, shortcutHelp: { key: '?' },
 } satisfies Record<string, Chord>
@@ -29,7 +30,7 @@ export function shortcutLabel(id: ShortcutId, apple = isApplePlatform()): string
   return [chord.mod && 'Ctrl', chord.alt && 'Alt', chord.shift && 'Shift', chord.key].filter(Boolean).join('+')
 }
 
-const ARIA_KEYS: Record<string, string> = { '↑': 'ArrowUp', '↓': 'ArrowDown' }
+const ARIA_KEYS: Record<string, string> = { '↑': 'ArrowUp', '↓': 'ArrowDown', '←': 'ArrowLeft', '→': 'ArrowRight' }
 /** The `aria-keyshortcuts` spelling, which assistive technology reads instead of the glyphs. */
 export function ariaShortcut(id: ShortcutId, apple = isApplePlatform()): string {
   const chord: Chord = SHORTCUTS[id]
@@ -85,7 +86,7 @@ export function shortcutHelpSections(locale: JotLocale, apple = isApplePlatform(
       row(copy('已完成项移到底部', 'Move completed items to the bottom'), copy('工具栏「整理」', 'Tidy on the toolbar')),
     ] },
     { title: copy('表格', 'Tables'), rows: [
-      row(copy('调整当前列宽', 'Resize this column'), 'Alt+←', 'Alt+→'),
+      row(copy('调整当前列宽', 'Resize this column'), key('columnNarrow'), key('columnWiden')),
     ] },
     { title: copy('边写边转换', 'Type to format'), rows: [
       row(copy('在空行插入标题、清单、表格等', 'Insert a heading, list, table… on an empty line'), '/', ...en ? [] : ['、']),

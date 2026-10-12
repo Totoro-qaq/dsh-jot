@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { ActionMenu, type ActionMenuItem } from './ActionMenu.js'
 import { JotActionIcon } from './icons.js'
-import { explicitColumnWidth, nudgeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction, type TableTarget } from './table-actions.js'
+import { columnWidthChange, explicitColumnWidth, nudgeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget } from './table-actions.js'
 
 interface ChromeGeometry {
   column: number; row: number; bottom: number; middle: number
@@ -31,6 +31,17 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
   const [chrome, setChrome] = useState<TableChrome | null>(null)
   const [notice, setNotice] = useState('')
   const [columnWidth, setColumnWidth] = useState(TABLE_CELL_MIN_WIDTH)
+  const [widthMessage, setWidthMessage] = useState('')
+  const seenWidth = useRef<ColumnWidthSample | null>(null)
+  const widthSample: ColumnWidthSample | null = target
+    ? { key: `${target.tablePos}:${target.right}`, width: explicitColumnWidth(target.table, target.right - 1) }
+    : null
+  useEffect(() => {
+    if (!widthSample) return
+    const next = columnWidthChange(seenWidth.current, widthSample)
+    seenWidth.current = widthSample
+    if (next !== null) setWidthMessage(en ? `Column ${target?.right ?? ''} width ${next} pixels` : `第 ${target?.right ?? ''} 列宽度 ${next} 像素`)
+  }, [widthSample?.key, widthSample?.width, en, target?.right])
 
   useEffect(() => { setNotice('') }, [target?.tablePos, target?.table])
   useLayoutEffect(() => {
@@ -120,6 +131,7 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
   const shownWidth = Math.min(TABLE_CELL_MAX_WIDTH, Math.max(TABLE_CELL_MIN_WIDTH, columnWidth))
   return createPortal(<div className="jot-table-chrome" role="group" aria-label={en ? 'Edit table' : '编辑表格'}>
     <span className="jot-table-column-indicator" aria-hidden="true" style={{ left: geometry.columnStart, width: geometry.columnWidth }} />
+    {/* pointer-events:none：这条 8 像素分隔条盖在列边上，鼠标拖动要落到单元格边框上。 */}
     <div className="jot-table-column-resize" role="separator" aria-orientation="vertical" tabIndex={0}
       aria-label={en ? `Resize column ${target.right}` : `调整第 ${target.right} 列的宽度`}
       aria-valuemin={TABLE_CELL_MIN_WIDTH} aria-valuemax={TABLE_CELL_MAX_WIDTH} aria-valuenow={shownWidth}
@@ -162,5 +174,6 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
       <JotActionIcon name="plus" />
     </button>
     {notice && <span className="jot-table-notice" role="status">{notice}</span>}
+    <span className="jot-table-width-status" role="status" aria-live="polite">{widthMessage}</span>
   </div>, chrome.mount)
 }

@@ -15,6 +15,7 @@ import { TableControls } from './TableControls.js'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../model.js'
 import { applySlashItem, filterSlashItems, slashLabel, slashMatch, type SlashItem, type SlashMatch } from './slash-menu.js'
 import { applyEditorLink, linkApplyMessage, linkClickAction, linkSelection, openLinkHref, openableLinkHref, removeEditorLink } from './link-commands.js'
+import { linkPopoverInitialFocus } from './LinkPopover.js'
 import { LinkPopover } from './LinkPopover.js'
 import { tidyCompletedTasks } from './list-commands.js'
 import { ariaShortcut, shortcutLabel, SHORTCUTS, withShortcut, type ShortcutId } from './shortcut-labels.js'
@@ -354,10 +355,13 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
   }, [link?.id, link?.caret.left, link?.caret.top, link?.caret.bottom, linkError])
   useEffect(() => {
     if (!link || !linkPlacement) return
-    const field = linkMenu.current?.querySelector<HTMLInputElement>(link.text ? '.jot-link-href' : '.jot-link-text')
+    const choice = linkPopoverInitialFocus({ readOnly, text: link.text, canOpen: Boolean(openableLinkHref(link.href)) })
+    const selector = choice === 'href' ? '.jot-link-href' : choice === 'text' ? '.jot-link-text'
+      : choice === 'open' ? '.jot-link-open' : '[role="dialog"]'
+    const field = linkMenu.current?.querySelector<HTMLElement>(selector)
     field?.focus()
-    field?.select()
-  }, [link?.id, Boolean(linkPlacement)])
+    if (field instanceof HTMLInputElement) field.select()
+  }, [link?.id, link?.text, link?.href, readOnly, Boolean(linkPlacement)])
   useEffect(() => {
     if (!linkOpen) return
     const page = root.current?.ownerDocument
@@ -600,6 +604,7 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       </div>, globalThis.document.body)}
       {link && globalThis.document && createPortal(<div className="jot-overlay-root">
         <style>{jotStyles}</style>
+        {/* 定位写在这一层。内层卡片不能再 position:fixed，否则这里量到的宽高是 0。 */}
         <div ref={linkMenu} style={{ position: 'fixed', left: linkPlacement?.left ?? 0, top: linkPlacement?.top ?? 0, visibility: linkPlacement ? 'visible' : 'hidden', zIndex: 45 }}>
           <LinkPopover key={link.id} locale={locale} readOnly={readOnly} text={link.text} href={link.href}
             existing={link.existing} canOpen={Boolean(openableLinkHref(link.href))} error={linkError}

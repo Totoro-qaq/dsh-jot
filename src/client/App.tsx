@@ -26,7 +26,7 @@ import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note
 import { consumeJotCommand, type JotCommandRequest } from './commands.js'
 import type { AttachmentInfo, ExportFormat, ImportSummary, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
 import type { AttachmentDialogRequest } from './attachment-dialog.js'
-import { dismissToast, emptyToastQueue, pushToast, type ToastNotice } from './toasts.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, type ToastNotice } from './toasts.js'
 
 export interface JotAppProps {
   mode: 'compact' | 'wide'
@@ -1278,7 +1278,12 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         {editorPanel}</> : showList ? listPanel : editorPanel}</main>}
     {toast && <div className="jot-toast" role="status" aria-live="polite" key={toast.id}>
       <span>{toast.text}</span>
-      {toast.action && <button className="jot-text-btn" type="button" onClick={() => { const run = toast.action!.run; dismissVisibleToast(toast.id); run() }}>{toast.action.label}</button>}
+      {toast.action && <button className="jot-text-btn" type="button" disabled={busy} onClick={() => {
+        const decision = activateToast(toastQueue, toast.id, busy)
+        if (!decision.run) return
+        setToastQueue(decision.queue)
+        decision.run()
+      }}>{toast.action.label}</button>}
       <button className="jot-toast-close" type="button" aria-label={copy('关闭提示', 'Dismiss')} onClick={() => dismissVisibleToast(toast.id)}><JotActionIcon name="close" size={14} /></button>
     </div>}
     {contextPosition && draft && <ActionMenu triggerLabel={copy('笔记菜单', 'Note menu')} items={menuItems} position={contextPosition} onClose={() => setContextPosition(null)} />}

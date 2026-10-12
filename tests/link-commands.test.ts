@@ -4,6 +4,7 @@ import { Editor, type JSONContent } from '@tiptap/core'
 import { closeHistory, history, undoDepth } from '@tiptap/pm/history'
 import { TextSelection } from '@tiptap/pm/state'
 import { createJotExtensions } from '../src/client/editor-extensions.js'
+import { linkPopoverInitialFocus } from '../src/client/LinkPopover.js'
 import { applyEditorLink, linkApplyMessage, linkClickAction, linkSelection, normalizeLinkHref, openableLinkHref, openLinkHref, removeEditorLink } from '../src/client/link-commands.js'
 import { validateRichDoc } from '../src/model.js'
 
@@ -47,11 +48,18 @@ test('link addresses keep the schemes notes can store and reject the rest', () =
   assert.equal(normalizeLinkHref('#section'), '#section')
   assert.equal(normalizeLinkHref('https://foo'), 'https://foo')
   for (const raw of ['', '   ', 'hello', 'mailto:', 'tel:', '#', 'javascript:alert(1)', 'data:text/html,hi',
-    'ftp://example.com', '//example.org', 'http://bad host', `https://example.com/${'a'.repeat(2100)}`]) {
+    'ftp://example.com', '//example.org', 'http://bad host', 'https://user:pass@example.com/a', 'https://user@example.com/a',
+    'https://:secret@example.com', `https://example.com/${'a'.repeat(2100)}`]) {
     assert.equal(normalizeLinkHref(raw), null, raw)
   }
   assert.equal(openableLinkHref('#section'), null)
   assert.equal(openableLinkHref('example.com'), 'https://example.com')
+  assert.equal(openableLinkHref('https://user:pass@example.com'), null)
+  // 已经写进笔记的账号口令地址仍要能加载；拒绝的是新建和打开。
+  const stored = validateRichDoc({ type: 'doc', content: [{ type: 'paragraph', content: [
+    { type: 'text', text: 'secret', marks: [{ type: 'link', attrs: { href: 'https://user:pass@example.com/a' } }] },
+  ] }] })
+  assert.equal(stored.content[0]?.content?.[0]?.marks?.[0]?.attrs?.href, 'https://user:pass@example.com/a')
 })
 
 test('applying a link stores a savable mark, keeps marks that cover the range, and undoes in one step', t => {
@@ -123,6 +131,57 @@ test('a link is refused in a code block, across blocks when the text changes, an
   assert.match(linkApplyMessage('empty-text', 'en'), /link text/)
 })
 
+test('an unchanged selection keeps its whitespace and partial marks', t => {
+  const editor = create([paragraph(text(' '), text('A', [{ type: 'bold' }]), text('B  '))])
+  t.after(() => editor.destroy())
+  let from = -1
+  let to = -1
+  editor.state.doc.descendants((node, position) => {
+    if (!node.isText) return
+    if (from < 0) from = position
+    to = position + node.text!.length
+  })
+  assert.equal(editor.state.doc.textBetween(from, to, ''), ' AB  ')
+  assert.equal(applyEditorLink(editor.state, editor.view.dispatch, {
+    from, to, original: ' AB  ', text: ' AB  ', href: 'https://example.com',
+  }), true)
+  assert.equal(editor.state.doc.textContent, ' AB  ')
+  const marks = new Map<string, string[]>()
+  editor.state.doc.descendants(node => {
+    if (node.isText) marks.set(node.text!, node.marks.map(mark => mark.type.name).sort())
+  })
+  assert.deepEqual(marks.get(' '), ['link'])
+  assert.deepEqual(marks.get('A'), ['bold', 'link'])
+  assert.deepEqual(marks.get('B  '), ['link'])
+  const spaced = create([paragraph(text('A  B'))])
+  t.after(() => spaced.destroy())
+  const range = rangeOf(spaced, 'A  B')
+  assert.equal(applyEditorLink(spaced.state, spaced.view.dispatch, {
+    ...range, original: 'A  B', text: 'A  B', href: 'https://example.com/spaced',
+  }), true)
+  assert.equal(spaced.state.doc.textContent, 'A  B')
+  assert.equal(linkAt(spaced, 'A  B').href, 'https://example.com/spaced')
+})
+
+test('inline code is not reported as linked, and a stale remove does not throw', t => {
+  const editor = create([paragraph(text('const', [{ type: 'code' }]), text(' value'))])
+  t.after(() => editor.destroy())
+  const code = rangeOf(editor, 'const')
+  assert.equal(applyEditorLink(editor.state, editor.view.dispatch, {
+    ...code, original: 'const', text: 'const', href: 'https://example.com',
+  }), 'unsupported')
+  assert.deepEqual(linkAt(editor, 'const').marks, ['code'])
+  assert.equal(editor.state.doc.textContent, 'const value')
+  const size = editor.state.doc.content.size
+  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, { from: -1, to: 0 }), false)
+  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, { from: size + 4, to: size + 4 }), false)
+  assert.equal(editor.state.doc.textContent, 'const value')
+  assert.equal(linkPopoverInitialFocus({ readOnly: false, text: 'const', canOpen: true }), 'href')
+  assert.equal(linkPopoverInitialFocus({ readOnly: false, text: '', canOpen: true }), 'text')
+  assert.equal(linkPopoverInitialFocus({ readOnly: true, text: 'const', canOpen: true }), 'open')
+  assert.equal(linkPopoverInitialFocus({ readOnly: true, text: 'secret', canOpen: false }), 'dialog')
+})
+
 test('a plain click in an editable note only places the caret; read-only and modified clicks open', () => {
   assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href: 'https://example.com', attachment: false }), 'place-caret')
   assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: false, editable: true, href: 'example.com', attachment: false }), 'open')
@@ -138,7 +197,10 @@ test('a plain click in an editable note only places the caret; read-only and mod
     assert.equal(openLinkHref('example.com'), true)
     assert.deepEqual(opened, [['https://example.com', '_blank', 'noopener,noreferrer']])
     assert.equal(openLinkHref('javascript:alert(1)'), false)
+    assert.equal(openLinkHref('https://user:pass@example.com'), false)
+    assert.equal(opened.length, 1)
   } finally {
     globalThis.open = previous
   }
+  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'https://user:pass@example.com', attachment: false }), 'ignore')
 })

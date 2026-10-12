@@ -6,7 +6,7 @@ import { CellSelection, columnResizingPluginKey, TableMap } from '@tiptap/pm/tab
 import { createJotExtensions } from '../src/client/editor-extensions.js'
 import { syncEditorContent } from '../src/client/editor-content.js'
 import { persistableTableWidthPlugin } from '../src/client/table-view.js'
-import { nudgeTableColumn, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
+import { columnWidthChange, nudgeTableColumn, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
 import { docToText, MAX_DOC_BYTES, validateRichDoc } from '../src/model.js'
 
 const paragraph = (text?: string) => ({ type: 'paragraph', ...(text ? { content: [{ type: 'text', text }] } : {}) })
@@ -23,6 +23,14 @@ function select(editor: Editor, tablePos: number, row: number, column: number) {
   editor.view.dispatch(editor.state.tr.setSelection(CellSelection.create(editor.state.doc, position)))
   return selectedTable(editor.state)!
 }
+test('column width is announced only when the same column changes', () => {
+  assert.equal(columnWidthChange(null, { key: '1:1', width: 120 }), null)
+  assert.equal(columnWidthChange({ key: '1:1', width: 120 }, { key: '1:1', width: 136 }), 136)
+  assert.equal(columnWidthChange({ key: '1:1', width: 136 }, { key: '1:2', width: 200 }), null)
+  assert.equal(columnWidthChange({ key: '1:1', width: 136 }, { key: '1:1', width: null }), null)
+  assert.equal(columnWidthChange({ key: '1:1', width: null }, { key: '1:1', width: 104 }), 104)
+})
+
 function apply(editor: Editor, action: TableAction) {
   const target = selectedTable(editor.state)!
   const tr = tableActionTransaction(editor.state, target, action)

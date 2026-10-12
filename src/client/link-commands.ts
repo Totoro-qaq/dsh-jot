@@ -40,6 +40,8 @@ export function normalizeLinkHref(raw: string): string | null {
     let url: URL
     try { url = new URL(value) } catch { return null }
     if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname) return null
+    // 带账号口令的地址不写入、也不打开。已经存在的笔记仍能加载，见 model 的校验。
+    if (url.username !== '' || url.password !== '') return null
     // 用户没写协议时，单词不能变成链接；localhost 和带点的主机名可以。
     if (!SCHEME.test(raw.trim()) && url.hostname !== 'localhost' && !url.hostname.includes('.')) return null
   }
@@ -128,7 +130,7 @@ export function linkApplyMessage(result: LinkApplyFailure, locale: JotLocale): s
 }
 
 /**
- * 给选区加上或改写链接。文字有变化时在同一段内替换，并保留整段都有的其它格式。
+ * 给选区加上或改写链接。文字没改时只加标记；文字有变化时在同一段内替换，并保留整段都有的其它格式。
  * 一次事务，撤销一步即可还原。
  */
 export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
@@ -141,40 +143,68 @@ export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   if (state.doc.textBetween(from, to, '\n') !== input.original) return 'stale'
   const href = normalizeLinkHref(input.href)
   if (!href) return 'invalid-href'
-  const text = input.text.replace(/\s+/gu, ' ').trim()
-  if (!text) return 'empty-text'
   if (blocksLink(state.doc, from, to)) return 'unsupported'
+  // 文字没改时只加链接标记，保留首尾空白、连续空格，以及只覆盖其中一段的粗体等。
+  const unchanged = input.text === input.original
   const sameParent = from === to || state.doc.resolve(from).sameParent(state.doc.resolve(to))
-  if (!sameParent && text !== input.original.replace(/\s+/gu, ' ').trim() && text !== input.original) return 'unsupported'
+  let replacement: string | null = null
+  if (!unchanged) {
+    replacement = input.text.replace(/\s+/gu, ' ').trim()
+    if (!replacement) return 'empty-text'
+    if (!sameParent) return 'unsupported'
+  } else if (from === to || input.text === '') {
+    return 'empty-text'
+  }
   if (!dispatch) return true
   const mark = link.create({ href })
   let tr = state.tr
   let end = to
-  if (sameParent && text !== state.doc.textBetween(from, to, '')) {
-    const kept = marksAcross(state, from, to).filter(item => item.type !== link)
-    tr = tr.replaceWith(from, to, state.schema.text(text, [...kept, mark]))
-    end = from + text.length
+  if (replacement !== null) {
+    const kept = marksAcross(state, from, to).filter(item =>
+      item.type !== link && !item.type.excludes(mark.type) && !mark.type.excludes(item.type))
+    let node
+    try { node = state.schema.text(replacement, [...kept, mark]) } catch { return 'unsupported' }
+    tr = tr.replaceWith(from, to, node)
+    end = from + replacement.length
   } else {
     tr = tr.addMark(from, to, mark)
   }
+  // 行内代码会排除其它标记。没有真正加上链接时不能报成功，也不留下只覆盖一部分的结果。
+  if (!rangeHasHref(tr.doc, from, end, href)) return 'unsupported'
   if (!tr.docChanged) return true
   try { validateRichDoc(tr.doc.toJSON()) } catch { return 'unsupported' }
   dispatch(tr.setSelection(TextSelection.create(tr.doc, from, end)).scrollIntoView())
   return true
 }
 
-/** 去掉选区上的链接。光标收起时先扩到整段链接。 */
+function rangeHasHref(doc: ProseMirrorNode, from: number, to: number, href: string): boolean {
+  const link = doc.type.schema.marks.link
+  if (!link || from >= to) return false
+  let found = false
+  let covered = true
+  doc.nodesBetween(from, to, node => {
+    if (!node.isText || !node.text) return
+    found = true
+    const mark = link.isInSet(node.marks)
+    if (!mark || String(mark.attrs.href ?? '') !== href) covered = false
+  })
+  return found && covered
+}
+
+/** 去掉选区上的链接。光标收起时先扩到整段链接。位置已经失效时返回 false，不抛错。 */
 export function removeEditorLink(state: EditorState, dispatch: Dispatch, range: { from: number; to: number }): boolean {
   const link = state.schema.marks.link
   if (!link) return false
   let { from, to } = range
+  const size = state.doc.content.size
+  if (from < 0 || to < from || from > size || to > size) return false
   if (from === to) {
     const found = getMarkRange(state.doc.resolve(from), link)
     if (!found) return false
     from = found.from
     to = found.to
   }
-  if (from >= to || !state.doc.rangeHasMark(from, to, link)) return false
+  if (from >= to || from < 0 || to > size || !state.doc.rangeHasMark(from, to, link)) return false
   if (!dispatch) return true
   const tr = state.tr.removeMark(from, to, link)
   if (!tr.docChanged) return false

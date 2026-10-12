@@ -126,8 +126,10 @@ function visibleColumnWidth(view: EditorView, tablePos: number, column: number, 
 }
 
 /**
- * 表格里 Tab 用来换单元格，到不了列宽控制。Alt+←／→ 直接调整当前列，
- * 不需要先把焦点移到那条 8 像素的分隔条上。
+ * 表格里 Tab 用来换单元格。Alt+Shift+←／→ 调整当前列。
+ * 不用 Alt+←／→：那会抢走 macOS 的按词移动，到最小／最大宽度时还会漏给浏览器当成后退。
+ * 也不用 Mod+Alt+←／→：Chromium 用它切换标签，Windows 用来旋转屏幕，GNOME 用来切换工作区。
+ * 光标在可编辑的表格里时始终吃掉这个键，宽度不变也不交给浏览器。
  */
 export const JotTableKeys = Extension.create({
   name: 'jotTableKeys',
@@ -140,14 +142,15 @@ export const JotTableKeys = Extension.create({
       const column = target.right - 1
       const transaction = nudgeTableColumn(this.editor.state, target, column, delta,
         visibleColumnWidth(this.editor.view, target.tablePos, column, explicitColumnWidth(target.table, column)))
-      if (!transaction) return false
-      this.editor.view.dispatch(closeHistory(transaction))
-      this.editor.view.dispatch(closeHistory(this.editor.state.tr))
+      if (transaction) {
+        this.editor.view.dispatch(closeHistory(transaction))
+        this.editor.view.dispatch(closeHistory(this.editor.state.tr))
+      }
       return true
     }
     return {
-      'Alt-ArrowLeft': nudge(-TABLE_COLUMN_NUDGE),
-      'Alt-ArrowRight': nudge(TABLE_COLUMN_NUDGE),
+      'Alt-Shift-ArrowLeft': nudge(-TABLE_COLUMN_NUDGE),
+      'Alt-Shift-ArrowRight': nudge(TABLE_COLUMN_NUDGE),
     }
   },
 })

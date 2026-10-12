@@ -67,6 +67,14 @@ test('nested lists, numbering, images and files survive; literal Markdown charac
   assert.deepEqual(roundTrip(literal), literal)
 })
 
+test('markdown import keeps the label of a credential URL but does not store the link', () => {
+  const parsed = docFromMarkdown('see [secret](https://user:secret@example.com/a) now')
+  assert.equal(JSON.stringify(parsed).includes('"link"'), false)
+  assert.match(JSON.stringify(parsed), /secret/)
+  const ordinary = docFromMarkdown('[ok](https://example.com)')
+  assert.equal(ordinary.content[0]?.content?.[0]?.marks?.[0]?.attrs?.href, 'https://example.com')
+})
+
 test('only layout Markdown cannot carry counts as a loss', () => {
   const simple = doc({ type: 'table', content: [
     { type: 'tableRow', content: [{ type: 'tableHeader', content: [paragraph(text('A'))] }, { type: 'tableHeader', content: [paragraph(text('B|C'))] }] },

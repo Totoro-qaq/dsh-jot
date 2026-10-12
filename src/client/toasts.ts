@@ -27,3 +27,13 @@ export function dismissToast(queue: ToastQueue, id: number): ToastQueue {
   if (queue.visible?.id !== id) return queue
   return { visible: queue.deferred, deferred: null }
 }
+
+/**
+ * 取出一条可执行的提示操作。界面正忙时原样返回：perform 会直接结束，
+ * 先关掉提示再调用，这次撤销就丢了。
+ */
+export function activateToast(queue: ToastQueue, id: number, busy: boolean): { queue: ToastQueue; run: (() => void) | null } {
+  const visible = queue.visible
+  if (!visible || visible.id !== id || !visible.action || busy) return { queue, run: null }
+  return { queue: dismissToast(queue, id), run: visible.action.run }
+}

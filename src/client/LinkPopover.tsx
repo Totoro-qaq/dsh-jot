@@ -17,6 +17,12 @@ export interface LinkPopoverProps {
   onClose: () => void
 }
 
+/** 只读时输入框是 disabled，焦点要落到还能用的按钮，或对话框本身。 */
+export function linkPopoverInitialFocus(input: { readOnly: boolean; text: string; canOpen: boolean }): 'href' | 'text' | 'open' | 'dialog' {
+  if (!input.readOnly) return input.text ? 'href' : 'text'
+  return input.canOpen ? 'open' : 'dialog'
+}
+
 /** 工具栏风格的链接浮层：打开后焦点进入输入框，Escape 关闭。 */
 export function LinkPopover({ locale, readOnly, text, href, existing, canOpen, error, onText, onHref, onSubmit, onOpen, onRemove, onClose }: LinkPopoverProps) {
   const en = locale === 'en'
@@ -31,7 +37,7 @@ export function LinkPopover({ locale, readOnly, text, href, existing, canOpen, e
     event.preventDefault()
     if (!readOnly) onSubmit()
   }
-  return <div role="dialog" aria-label={en ? 'Link' : '链接'} className="jot-link-popover" onKeyDown={onKeyDown}
+  return <div role="dialog" aria-label={en ? 'Link' : '链接'} className="jot-link-popover" tabIndex={-1} onKeyDown={onKeyDown}
     onMouseDown={event => { if (!(event.target as HTMLElement).closest('input,textarea')) event.preventDefault() }}>
     <form onSubmit={submit}>
       <label>{en ? 'Text' : '文字'}
@@ -46,7 +52,7 @@ export function LinkPopover({ locale, readOnly, text, href, existing, canOpen, e
       {error && <p className="jot-link-error" role="alert">{error}</p>}
       <div className="jot-link-actions">
         {!readOnly && <button type="submit" className="jot-btn jot-primary">{existing ? en ? 'Save' : '保存' : en ? 'Insert' : '插入'}</button>}
-        {canOpen && <button type="button" className="jot-btn" onClick={onOpen}>{en ? 'Open' : '打开'}</button>}
+        {canOpen && <button type="button" className="jot-btn jot-link-open" onClick={onOpen}>{en ? 'Open' : '打开'}</button>}
         {!readOnly && existing && <button type="button" className="jot-text-btn" onClick={onRemove}>{en ? 'Remove' : '移除'}</button>}
       </div>
     </form>

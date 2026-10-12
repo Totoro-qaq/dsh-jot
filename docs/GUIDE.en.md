@@ -97,7 +97,7 @@ Editing uses Command on macOS and Ctrl on Windows and Linux:
 | Move this list item up / down | Option + Shift + ↑ / ↓ | Alt + Shift + ↑ / ↓ |
 | Move completed items to the bottom | **Tidy** on the toolbar | same |
 | Open the note menu | Shift+F10 / Menu | same |
-| Resize this column | Alt + ← / → in the table | same |
+| Resize this column | Option + Shift + ← / → in the table | Alt + Shift + ← / → in the table |
 | Search all notes | `/` | `/` |
 | Show all shortcuts | `?` | `?` |
 
@@ -113,7 +113,7 @@ Desktop on macOS and Windows handles Host bindings first. While the body has foc
 
 Click a cell: the **⋯** above the table manages the current column and the **⋮** on the left manages the current row, with insert before/after and delete. The **+** buttons on the right and bottom append a last column or row, independent of the caret. The table icon in the top-right corner opens **Table options**.
 
-Drag a column border to resize it; widths are saved. Press Escape before releasing the drag to cancel it and restore the previous width. With the caret in a cell, Alt+←/→ changes that column by 16 pixels. Tab still moves between cells, so column width does not depend on tabbing to the border first. ←/→ do the same when the column-resize control itself has focus. The width stops at the minimum and maximum, and each keypress is its own undo step. Row/column changes and committed width changes support consecutive undo/redo, and autosave does not clear that history. **Table options → Auto fit to available width** clears manual widths. Rows grow with their content, and wide tables scroll horizontally inside their own area. Whole-table zoom and row-height dragging are not provided.
+Drag a column border to resize it; widths are saved. Press Escape before releasing the drag to cancel it and restore the previous width. With the caret in a cell, Alt+Shift+←/→ (Option+Shift+←/→ on macOS) changes that column by 16 pixels. Alt+←/→ stays available for moving by word and for the browser Back key. Inside an editable table the chord is handled even when the column is already at its minimum or maximum width. Tab still moves between cells, so column width does not depend on tabbing to the border first. ←/→ do the same when the column-resize control itself has focus. Each keypress is its own undo step, and the new width is announced to screen readers. Row/column changes and committed width changes support consecutive undo/redo, and autosave does not clear that history. **Table options → Auto fit to available width** clears manual widths. Rows grow with their content, and wide tables scroll horizontally inside their own area. Whole-table zoom and row-height dragging are not provided.
 
 Tables are limited to 200 rows and 50 columns, within the note's total node and 1 MiB size limits. Additions are refused before exceeding a limit; a width drag that would exceed it restores the previous widths and keeps your text. Tables in Trash cannot be changed. Merged cells are preserved when stored, but there are no merge/split controls.
 

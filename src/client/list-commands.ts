@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core'
+import { closeHistory } from '@tiptap/pm/history'
 import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
 import { Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
 
@@ -92,8 +93,18 @@ export function tidyCompletedTasks(state: EditorState, dispatch?: Dispatch): boo
   const head = remap(state.selection.head, state.doc.resolve(state.selection.head))
   const selection = state.selection instanceof TextSelection
     ? TextSelection.create(tr.doc, anchor, head) : Selection.near(tr.doc.resolve(head))
-  dispatch(tr.setSelection(selection).scrollIntoView())
+  dispatchOwnStep(state, tr.setSelection(selection).scrollIntoView(), dispatch)
   return true
+}
+
+/**
+ * 这一步自己成为撤销记录，并且不并进前后 500 毫秒内的输入。
+ * closeHistory 会把上一段历史切开；空的第二次调用把 prevTime 置 0，后面的输入另起一步。
+ */
+function dispatchOwnStep(state: EditorState, tr: Transaction, dispatch: (tr: Transaction) => void) {
+  const closed = closeHistory(tr)
+  dispatch(closed)
+  dispatch(closeHistory(state.applyTransaction(closed).state.tr))
 }
 
 /** Keys for checklist work; they only act inside list items, so other blocks keep their defaults. */

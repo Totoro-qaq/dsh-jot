@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { dismissToast, emptyToastQueue, pushToast, type ToastNotice } from '../src/client/toasts.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, type ToastNotice } from '../src/client/toasts.js'
 
 const notice = (id: number, text: string, action = false): ToastNotice => ({
   id, text, ...(action ? { action: { label: 'Undo', run() {} } } : {}),
@@ -18,6 +18,19 @@ test('an undo toast stays visible when a later notice arrives, and dismissing it
   assert.equal(queue.deferred, null)
   queue = dismissToast(queue, 99)
   assert.equal(queue.visible?.id, 3, 'dismissing another id leaves the queue alone')
+})
+
+test('undo stays on screen while the app is busy, and runs only after that', () => {
+  let ran = 0
+  const queue = pushToast(emptyToastQueue(), { id: 1, text: 'Moved to Trash', action: { label: 'Undo', run: () => { ran++ } } })
+  const blocked = activateToast(queue, 1, true)
+  assert.equal(blocked.queue, queue)
+  assert.equal(blocked.run, null)
+  assert.equal(ran, 0)
+  const ready = activateToast(queue, 1, false)
+  assert.equal(ready.queue.visible, null)
+  ready.run?.()
+  assert.equal(ran, 1)
 })
 
 test('a newer undo replaces the visible undo and ordinary notices still replace each other', () => {
