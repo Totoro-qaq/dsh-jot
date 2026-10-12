@@ -26,7 +26,7 @@ import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note
 import { consumeJotCommand, type JotCommandRequest } from './commands.js'
 import type { AttachmentInfo, ExportFormat, ImportSummary, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
 import type { AttachmentDialogRequest } from './attachment-dialog.js'
-import { activateToast, dismissToast, emptyToastQueue, pushToast, toastDeadline, toastRemainingAfter, toastTimerDeps, type ToastNotice } from './toasts.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, toastDeadline, type ToastNotice } from './toasts.js'
 
 export interface JotAppProps {
   mode: 'compact' | 'wide'
@@ -163,23 +163,22 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   }, [])
   const dismissVisibleToast = (id: number) => setToastQueue(queue => dismissToast(queue, id))
   const toastClock = useRef<{ id: number; remainingMs: number } | null>(null)
-  // 普通通知的 paused 一直是 false，busy 变化不会重开计时器。撤销提示才会在忙碌时暂停。
-  const toastTiming = toast ? toastTimerDeps(toast.id, Boolean(toast.action), busy) : null
+  // 只有撤销提示会因忙碌暂停。普通通知的 paused 一直是 false，busy 变化不会重开它的计时器。
+  const toastPaused = Boolean(toast?.action) && busy
   useEffect(() => {
-    if (!toast || !toastTiming) { toastClock.current = null; return }
-    const decision = toastDeadline({ id: toastTiming.id, hasAction: Boolean(toast.action), busy: toastTiming.paused, clock: toastClock.current })
+    if (!toast) { toastClock.current = null; return }
+    const decision = toastDeadline({ id: toast.id, hasAction: Boolean(toast.action), busy: toastPaused, clock: toastClock.current })
     toastClock.current = decision.clock
     if (decision.delayMs === null) return
     const started = Date.now()
     const timer = setTimeout(() => dismissVisibleToast(toast.id), decision.delayMs)
     return () => {
       clearTimeout(timer)
-      // 普通通知不暂停。撤销提示在忙碌时停住，清掉计时器时记下还剩多久。
-      if (toastClock.current?.id === toast.id) toastClock.current = {
-        id: toast.id, remainingMs: toastRemainingAfter(toastClock.current.remainingMs, Date.now() - started),
-      }
+      // 撤销提示被暂停或换掉时，记下还剩多久。普通通知没有 clock。
+      const clock = toastClock.current
+      if (clock?.id === toast.id) toastClock.current = { id: toast.id, remainingMs: Math.max(0, clock.remainingMs - Math.max(0, Date.now() - started)) }
     }
-  }, [toast, toastTiming?.id, toastTiming?.paused])
+  }, [toast, toastPaused])
   const fileInput = useRef<HTMLInputElement>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)
