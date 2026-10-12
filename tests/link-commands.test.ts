@@ -213,7 +213,7 @@ test('typing several characters in a new link does not retarget focus', () => {
 test('a plain click in an editable note only places the caret; read-only and modified clicks open', () => {
   assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href: 'https://example.com', attachment: false }), 'place-caret')
   assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: false, editable: true, href: 'example.com', attachment: false }), 'open')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable: true, href: 'mailto:a@b.example', attachment: false }), 'open')
+  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable: true, href: 'mailto:a@b.example', attachment: false, apple: false }), 'open')
   assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'tel:1', attachment: false }), 'open')
   assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: '#section', attachment: false }), 'ignore')
   assert.equal(linkClickAction({ button: 1, metaKey: false, ctrlKey: false, editable: true, href: 'https://example.com', attachment: false }), 'open')
@@ -367,9 +367,9 @@ test('a credential link is rendered without an href, and click and middle-click 
   assert.equal(blockCredentialLinkEvent({ type: 'auxclick', preventDefault: prevent }, 'https://user@example.com/a', false), true)
   assert.equal(prevented, 2)
   assert.equal(blockCredentialLinkEvent({ type: 'click', preventDefault: prevent }, 'https://example.com', false), false)
-  assert.equal(blockCredentialLinkEvent({ type: 'auxclick', preventDefault: prevent }, 'https://example.com', false), true)
+  assert.equal(blockCredentialLinkEvent({ type: 'auxclick', button: 1, preventDefault: prevent }, 'https://example.com', false), true)
   assert.equal(blockCredentialLinkEvent({ type: 'click', preventDefault: prevent }, 'https://example.com', false, false), true)
-  assert.equal(blockCredentialLinkEvent({ type: 'click', ctrlKey: true, preventDefault: prevent }, 'https://example.com', false, true), true)
+  assert.equal(blockCredentialLinkEvent({ type: 'click', ctrlKey: true, preventDefault: prevent }, 'https://example.com', false, true, false), true)
   assert.equal(blockCredentialLinkEvent({ type: 'mousedown', preventDefault: prevent }, 'https://user:pass@example.com/a', false), false)
   assert.equal(blockCredentialLinkEvent({ type: 'auxclick', preventDefault: prevent }, 'https://user:pass@example.com/a', true), false)
   assert.equal(prevented, 5)
@@ -377,7 +377,7 @@ test('a credential link is rendered without an href, and click and middle-click 
   assert.deepEqual(guardLinkDomEvent(keyboard, 'https://example.com', false, false), { handled: true, open: true })
   const mouse = { type: 'click', detail: 1, preventDefault: prevent }
   assert.deepEqual(guardLinkDomEvent(mouse, 'https://example.com', false, false), { handled: true, open: false })
-  const middle = { type: 'auxclick', detail: 1, preventDefault: prevent }
+  const middle = { type: 'auxclick', button: 1, detail: 1, preventDefault: prevent }
   assert.deepEqual(guardLinkDomEvent(middle, 'https://example.com', false, true), { handled: true, open: true })
   assert.deepEqual(guardLinkDomEvent(middle, 'https://user:pass@example.com/a', false, true), { handled: true, open: false })
 })
@@ -386,13 +386,13 @@ test('middle-click opens on auxclick once, and a primary click or Enter does not
   let opened = 0
   const open = () => { opened++ }
   assert.equal(handleLinkClick('open', { button: 1, preventDefault() {} }, open), true)
-  const aux = guardLinkDomEvent({ type: 'auxclick', detail: 1, preventDefault() {} }, 'https://example.com', false, true)
+  const aux = guardLinkDomEvent({ type: 'auxclick', button: 1, detail: 1, preventDefault() {} }, 'https://example.com', false, true)
   if (aux.open) open()
   assert.deepEqual(aux, { handled: true, open: true })
   assert.equal(opened, 1)
   opened = 0
   assert.equal(handleLinkClick('open', { button: 0, preventDefault() {} }, open), true)
-  const modified = guardLinkDomEvent({ type: 'click', detail: 1, ctrlKey: true, preventDefault() {} }, 'https://example.com', false, true)
+  const modified = guardLinkDomEvent({ type: 'click', detail: 1, ctrlKey: true, preventDefault() {} }, 'https://example.com', false, true, false)
   if (modified.open) open()
   assert.deepEqual(modified, { handled: true, open: false })
   assert.equal(opened, 1)
@@ -408,6 +408,34 @@ test('middle-click opens on auxclick once, and a primary click or Enter does not
   assert.equal(opened, 1)
   assert.equal(handleLinkClick('place-caret', { button: 0, preventDefault() {} }, open), true)
   assert.equal(opened, 1)
+})
+
+test('a right-click or a macOS Ctrl-click leaves the link to the context menu', () => {
+  let prevented = 0
+  const prevent = () => { prevented++ }
+  for (const editable of [true, false]) {
+    const right = guardLinkDomEvent({ type: 'auxclick', button: 2, detail: 1, preventDefault: prevent }, 'https://example.com', false, editable)
+    assert.deepEqual(right, { handled: false, open: false })
+    assert.equal(linkClickAction({ button: 2, metaKey: false, ctrlKey: false, editable, href: 'https://example.com', attachment: false }), 'ignore')
+  }
+  assert.equal(prevented, 0)
+  assert.deepEqual(guardLinkDomEvent({ type: 'auxclick', detail: 1, preventDefault: prevent }, 'https://example.com', false, false), { handled: false, open: false })
+  assert.equal(prevented, 0)
+  assert.deepEqual(guardLinkDomEvent({ type: 'auxclick', button: 1, detail: 1, preventDefault: prevent }, 'https://example.com', false, false), { handled: true, open: true })
+  assert.equal(prevented, 1)
+  assert.deepEqual(guardLinkDomEvent({ type: 'auxclick', button: 2, detail: 1, preventDefault: prevent }, 'https://user:pass@example.com/a', false, true), { handled: true, open: false })
+  assert.equal(prevented, 2)
+  for (const editable of [true, false]) {
+    assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable, href: 'https://example.com', attachment: false, apple: true }), 'ignore')
+    assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: true, editable, href: 'https://example.com', attachment: false, apple: true }), 'ignore')
+    assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: false, editable, href: 'https://example.com', attachment: false, apple: true }), 'open')
+    assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable, href: 'https://example.com', attachment: false, apple: false }), 'open')
+  }
+  let opened = 0
+  const mouseUp = linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable: false, href: 'https://example.com', attachment: false, apple: true })
+  assert.equal(handleLinkClick(mouseUp, { button: 0, preventDefault: prevent }, () => { opened++ }), false)
+  assert.equal(opened, 0)
+  assert.equal(prevented, 2)
 })
 
 test('a click on either side of two adjacent links uses the link that was clicked', t => {

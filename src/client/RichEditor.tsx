@@ -66,7 +66,7 @@ function blockCredentialNavigation(view: {
   state: Parameters<typeof resolveClickedLinkHref>[0]
   posAtCoords: (coords: { left: number; top: number }) => { pos: number } | null | undefined
   posAtDOM: (node: globalThis.Node, offset: number) => number
-}, event: { type: string; detail?: number; target: EventTarget | null; clientX: number; clientY: number; metaKey?: boolean; ctrlKey?: boolean; preventDefault(): void }): boolean {
+}, event: { type: string; button?: number; detail?: number; target: EventTarget | null; clientX: number; clientY: number; metaKey?: boolean; ctrlKey?: boolean; preventDefault(): void }): boolean {
   const anchor = event.target instanceof Element ? event.target.closest('a') : null
   if (!anchor || !view.dom.contains(anchor)) return false
   const attachment = anchor.hasAttribute('data-jot-attachment-id') || anchor.getAttribute('data-type') === 'jot-attachment'

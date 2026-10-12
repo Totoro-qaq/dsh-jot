@@ -3,6 +3,7 @@ import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { TextSelection } from '@tiptap/pm/state'
 import { linkHrefHasCredentials, validateRichDoc } from '../model.js'
+import { isApplePlatform } from './editor-shortcuts.js'
 import type { JotLocale } from './types.js'
 
 type Dispatch = ((tr: Transaction) => void) | undefined
@@ -338,6 +339,8 @@ export interface LinkClickProbe {
   editable: boolean
   href: string | null
   attachment: boolean
+  /** 省略时按当前平台判断。macOS 上 Ctrl+单击是右键。 */
+  apple?: boolean
 }
 
 /** 两条链接相接时，点在左侧末尾取 before，点在右侧开头取 after。 */
@@ -383,7 +386,7 @@ export function resolveClickedLinkHref(state: EditorState, clickPos: number | nu
 
 /**
  * 编辑时单击只落光标。中键、只读和按住主修饰键由我们打开一次。
- * 带账号口令的地址一律拦截。右键和附件卡片仍交给浏览器。
+ * 带账号口令的地址一律拦截。右键、macOS 上的 Ctrl+单击和附件卡片仍交给浏览器。
  */
 export function linkClickAction(input: LinkClickProbe): 'ignore' | 'open' | 'place-caret' | 'block' {
   if (input.attachment || !input.href) return 'ignore'
@@ -391,6 +394,8 @@ export function linkClickAction(input: LinkClickProbe): 'ignore' | 'open' | 'pla
   // 中键也要我们来开，不能让浏览器再开一份。打不开的地址只取消原生导航。
   if (input.button === 1) return openableLinkHref(input.href) ? 'open' : 'block'
   if (input.button !== 0) return 'ignore'
+  // macOS 的 Ctrl+单击会弹出上下文菜单，浏览器不发 click，但 mouseup 照样到这里。
+  if (input.ctrlKey && (input.apple ?? isApplePlatform())) return 'ignore'
   if (!input.editable || input.metaKey || input.ctrlKey) return openableLinkHref(input.href) ? 'open' : 'ignore'
   return 'place-caret'
 }
@@ -406,37 +411,35 @@ export function handleLinkClick(action: 'ignore' | 'open' | 'place-caret' | 'blo
   return true
 }
 
+export interface LinkDomEvent {
+  type: string
+  button?: number
+  detail?: number
+  metaKey?: boolean
+  ctrlKey?: boolean
+  preventDefault(): void
+}
+
 /**
  * 原生 `click` 和中键 `auxclick` 会跟着 href 导航，mouseup 上的 preventDefault 拦不住。
  * 我们自己会打开或拦截时都要取消。鼠标主键已经在 mouseup 里打开过；
  * 中键的 mouseup 只取消默认，打开留在这次 auxclick。键盘激活的 click（detail 为 0）也在这里打开。都只开一次。
+ * 右键同样会发 auxclick，按 `button` 区分；没带 `button` 的 auxclick 不当作中键。
  */
-export function guardLinkDomEvent(event: {
-  type: string
-  detail?: number
-  metaKey?: boolean
-  ctrlKey?: boolean
-  preventDefault(): void
-}, href: string | null, attachment: boolean, editable = true): { handled: boolean; open: boolean } {
+export function guardLinkDomEvent(event: LinkDomEvent, href: string | null, attachment: boolean, editable = true, apple?: boolean): { handled: boolean; open: boolean } {
   if (attachment || (event.type !== 'click' && event.type !== 'auxclick') || !href) return { handled: false, open: false }
+  const button = typeof event.button === 'number' ? event.button : event.type === 'click' ? 0 : -1
   const action = linkClickAction({
-    button: event.type === 'auxclick' ? 1 : 0,
-    metaKey: Boolean(event.metaKey), ctrlKey: Boolean(event.ctrlKey), editable, href, attachment: false,
+    button, metaKey: Boolean(event.metaKey), ctrlKey: Boolean(event.ctrlKey), editable, href, attachment: false, apple,
   })
   if (action !== 'open' && action !== 'block') return { handled: false, open: false }
   event.preventDefault()
-  const open = action === 'open' && (event.type === 'auxclick' || event.detail === 0)
+  const open = action === 'open' && (event.type === 'auxclick' ? button === 1 : event.detail === 0)
   return { handled: true, open }
 }
 
-export function blockCredentialLinkEvent(event: {
-  type: string
-  detail?: number
-  metaKey?: boolean
-  ctrlKey?: boolean
-  preventDefault(): void
-}, href: string | null, attachment: boolean, editable = true): boolean {
-  return guardLinkDomEvent(event, href, attachment, editable).handled
+export function blockCredentialLinkEvent(event: LinkDomEvent, href: string | null, attachment: boolean, editable = true, apple?: boolean): boolean {
+  return guardLinkDomEvent(event, href, attachment, editable, apple).handled
 }
 
 /** 浮层里删除没有生效时的说明。正文或地址已经对不上，请用户重新打开。 */
