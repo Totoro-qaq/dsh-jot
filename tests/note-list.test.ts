@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, nextActiveNoteId, noteDateGroup, noteDateValue, noteExcerpt, noteMatchesQuery, searchElsewhere, titleMatchesFirst } from '../src/client/note-list.js'
+import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, isNoteContextMenuKey, nextActiveNoteId, noteDateGroup, noteDateValue, noteExcerpt, noteMatchesQuery, searchElsewhere, titleMatchesFirst } from '../src/client/note-list.js'
 import type { Note } from '../src/client/types.js'
 
 const note = (id: string, patch: Partial<Note> = {}): Note => ({
@@ -163,6 +163,17 @@ test('selection activation toggles a batch note exactly once without opening or 
   activateNoteListItem(target, options)
   assert.deepEqual(opened, [target])
   assert.equal(toggled[0], opened[0])
+})
+
+test('Shift+F10 and the menu key open a note menu; F10 alone does not', () => {
+  assert.equal(isNoteContextMenuKey({ key: 'ContextMenu' }), true)
+  assert.equal(isNoteContextMenuKey({ key: 'F10', shiftKey: true }), true)
+  assert.equal(isNoteContextMenuKey({ key: 'F10' }), false)
+  assert.equal(isNoteContextMenuKey({ key: 'F10', shiftKey: false }), false)
+  assert.equal(isNoteContextMenuKey({ key: 'ContextMenu', altKey: true }), false)
+  assert.equal(isNoteContextMenuKey({ key: 'F10', shiftKey: true, ctrlKey: true }), false)
+  assert.equal(isNoteContextMenuKey({ key: 'F10', shiftKey: true, metaKey: true }), false)
+  assert.equal(isNoteContextMenuKey({ key: 'Enter' }), false)
 })
 
 test('an empty search names the folder or Trash that does hold matches', () => {

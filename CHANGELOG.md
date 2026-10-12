@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Writing
+
+- Add, edit, open or remove a link from the toolbar or with Mod+K. The popover takes focus (Open, or the dialog, in a read-only note), typing does not move focus off the field, and Escape closes it. Pasted addresses are still detected automatically. A plain click in an editable note places the caret. Command-click on macOS, Ctrl-click on other systems, a middle-click, a click in a read-only note, or Enter on a focused read-only link opens the address once, and the second click of a double-click does not open it again. A right-click, and Ctrl-click on macOS, show the browser's context menu. Links that start with `#` are kept but not opened. Mod+K stays inside the editor and is not registered with the host. Link text keeps its spaces and partial formatting when edited, inline code stays code, and inserting at the caret keeps stored marks such as bold. Addresses with a username or password are rejected on insert, paste and autolink; a note that already has one still loads, and that link is rendered without an href, so it does not open. Save and Remove compare the note with what it held when the popover opened, including a mix of links and plain text, and ask you to open the link again when it changed.
+- **Tidy** on the toolbar moves completed items in the current checklist to the bottom. Incomplete and completed items each keep their relative order, nested lists move with their parent item, and Undo restores only that reorder, not typing done just before or after it.
+
+### Fixed
+
+- Shift+F10 and the keyboard menu key open the same note menu as a right-click when a note row has focus. F10 alone is left to the browser. Selection mode still has no menu.
+- The title and the editor body show the accent outline while they have keyboard focus.
+- With the caret in a table cell, Mod+Alt+Shift+Left/Right (Option+Shift+Command on macOS) changes that column's width by 16 pixels. Alt+Left/Right stays available for word movement, and Option+Shift+Left/Right stays available for selecting by word. The chord is consumed inside an editable table even when the width is already at its limit. Tab still moves between cells. Left and Right do the same when the column-resize control itself has focus; arrows with Shift, Alt, Ctrl, or Command do not. Dragging a border is unchanged, each keypress is its own undo step, and the new width is announced to screen readers at most about once a second, including the width where the change stops. Leaving the table, or deleting or inserting a column, drops an announcement that has not been spoken yet, so the column that takes its place is not announced with a width nobody changed.
+- A notice that arrives while Trash's Undo is still showing no longer replaces that Undo. The latest ordinary notice appears after the Undo is dismissed or expires. Clicking Undo while another action is still running leaves the Undo in place, and its six-second timer pauses until that action finishes. An ordinary notice does not restart its timer when another action starts or finishes.
+
 ## 0.2.11 — 2026-10-11
 
 - Ship `THIRD_PARTY_NOTICES.md` and versioned `LICENSES/` files with the upstream copyright and license texts for dependencies bundled into Jot.

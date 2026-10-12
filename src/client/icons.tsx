@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 export const JOT_ACTION_ICON_NAMES = [
   'attachment', 'back', 'capture', 'checklist', 'chevron-down', 'chevron-up', 'close',
   'duplicate', 'expand', 'export', 'folder', 'more', 'new-folder', 'new-note',
-  'pin', 'redo', 'save', 'search', 'table', 'trash', 'undo',
+  'pin', 'redo', 'save', 'search', 'table', 'trash', 'undo', 'link',
   'previous', 'next', 'format', 'plus', 'rename', 'restore', 'sort', 'sidebar', 'sparkle',
 ] as const
 
@@ -49,6 +49,7 @@ const shapes: Record<JotActionIconName, ReactNode> = {
   restore: <><path d="M4 12a8 8 0 1 0 8-8 8.7 8.7 0 0 0-6 2.5L4 8.5" /><path d="M4 4v4.5h4.5" /></>,
   sort: <><path d="M7 4.5v15M3.5 16 7 19.5l3.5-3.5" /><path d="M13 6.5h7.5M13 12h5.5M13 17.5h3.5" /></>,
   sidebar: <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9.5 4.5v15" /></>,
+  link: <><path d="M10 13.2a4.6 4.6 0 0 0 6.9.4l1.8-1.8a4.6 4.6 0 0 0-6.5-6.5L11 6.5" /><path d="M14 10.8a4.6 4.6 0 0 0-6.9-.4l-1.8 1.8a4.6 4.6 0 0 0 6.5 6.5L13.5 17.5" /></>,
   sparkle: <><path d="M11 3.5c.6 3.8 1.9 5.2 5.5 6.2-3.6 1-4.9 2.4-5.5 6.2-.6-3.8-1.9-5.2-5.5-6.2 3.6-1 4.9-2.4 5.5-6.2z" /><path d="M18.5 15v5M16 17.5h5" /></>,
 }
 

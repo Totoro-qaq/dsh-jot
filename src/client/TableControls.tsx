@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { ActionMenu, type ActionMenuItem } from './ActionMenu.js'
 import { JotActionIcon } from './icons.js'
-import { selectedTable, tableActionAllowed, tableActionTransaction, type TableAction, type TableTarget } from './table-actions.js'
+import { columnDividerDelta, columnWidthChange, columnWidthSample, explicitColumnWidth, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget, type WidthAnnouncementClock } from './table-actions.js'
 
 interface ChromeGeometry {
   column: number; row: number; bottom: number; middle: number
@@ -30,6 +30,37 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
   const menuKey = `${documentVersion.current.version}:${target?.tablePos}:${target?.top}:${target?.bottom}:${target?.left}:${target?.right}`
   const [chrome, setChrome] = useState<TableChrome | null>(null)
   const [notice, setNotice] = useState('')
+  const [columnWidth, setColumnWidth] = useState(TABLE_CELL_MIN_WIDTH)
+  const [widthMessage, setWidthMessage] = useState('')
+  const seenWidth = useRef<ColumnWidthSample | null>(null)
+  const announceClock = useRef<WidthAnnouncementClock | null>(null)
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const widthSample = columnWidthSample(target)
+  const widthText = (width: number) => en ? `Column ${target?.right ?? ''} width ${width} pixels` : `第 ${target?.right ?? ''} 列宽度 ${width} 像素`
+  useEffect(() => {
+    const previous = seenWidth.current
+    seenWidth.current = widthSample
+    // 离开表格、换列或增删一列后，还没说出的宽度属于别的列。只有计时器会说出它，取消计时器就够了。
+    if (previous?.key !== widthSample?.key && announceTimer.current) {
+      clearTimeout(announceTimer.current)
+      announceTimer.current = null
+    }
+    const change = widthSample ? columnWidthChange(previous, widthSample) : null
+    if (change === null) return
+    const plan = planWidthAnnouncement(announceClock.current, change, Date.now())
+    announceClock.current = plan.clock
+    if (plan.announce !== null) setWidthMessage(widthText(plan.announce))
+    if (plan.waitMs != null) {
+      if (announceTimer.current) clearTimeout(announceTimer.current)
+      announceTimer.current = setTimeout(() => {
+        announceTimer.current = null
+        const flushed = flushWidthAnnouncement(announceClock.current ?? { lastAt: 0, pending: null }, Date.now())
+        announceClock.current = flushed.clock
+        if (flushed.announce !== null) setWidthMessage(widthText(flushed.announce))
+      }, plan.waitMs)
+    }
+  }, [widthSample?.key, widthSample?.width, en, target?.right])
+  useEffect(() => () => { if (announceTimer.current) clearTimeout(announceTimer.current) }, [])
 
   useEffect(() => { setNotice('') }, [target?.tablePos, target?.table])
   useLayoutEffect(() => {
@@ -53,6 +84,11 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
       const rowBounds = table.rows[selected.top]?.getBoundingClientRect() ?? cellBounds
       const gutter = tableGutter(shell)
       const clampX = (x: number) => Math.max(gutter, Math.min(bounds.width - gutter - 28, x))
+      const explicit = explicitColumnWidth(selected.table, selected.right - 1)
+      const columnElement = table.querySelectorAll('col')[selected.right - 1] as HTMLElement | undefined
+      const raw = columnElement?.offsetWidth || cell.offsetWidth || TABLE_CELL_MIN_WIDTH
+      const measured = explicit ?? Math.max(TABLE_CELL_MIN_WIDTH, Math.round(raw))
+      setColumnWidth(previous => previous === measured ? previous : measured)
       const geometry: ChromeGeometry = {
         column: clampX(cellBounds.left + cellBounds.width / 2 - bounds.left - 14),
         row: Math.max(gutter, rowBounds.top + rowBounds.height / 2 - bounds.top - 14),
@@ -104,8 +140,28 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
   const canColumn = tableActionAllowed(editor.state, target, 'append-column')
   const disabledTitle = en ? 'Table or note capacity limit reached' : '已达到表格或笔记容量上限'
   const geometry = chrome.geometry
+  const nudgeColumn = (delta: number) => {
+    if (readOnly || !editor.isEditable) return
+    const transaction = nudgeTableColumn(editor.state, target, target.right - 1, delta, columnWidth)
+    if (!transaction) return
+    editor.view.dispatch(closeHistory(transaction))
+    editor.view.dispatch(closeHistory(editor.state.tr))
+  }
+  const shownWidth = Math.min(TABLE_CELL_MAX_WIDTH, Math.max(TABLE_CELL_MIN_WIDTH, columnWidth))
   return createPortal(<div className="jot-table-chrome" role="group" aria-label={en ? 'Edit table' : '编辑表格'}>
     <span className="jot-table-column-indicator" aria-hidden="true" style={{ left: geometry.columnStart, width: geometry.columnWidth }} />
+    {/* pointer-events:none：这条 8 像素分隔条盖在列边上，鼠标拖动要落到单元格边框上。 */}
+    <div className="jot-table-column-resize" role="separator" aria-orientation="vertical" tabIndex={0}
+      aria-label={en ? `Resize column ${target.right}` : `调整第 ${target.right} 列的宽度`}
+      aria-valuemin={TABLE_CELL_MIN_WIDTH} aria-valuemax={TABLE_CELL_MAX_WIDTH} aria-valuenow={shownWidth}
+      style={{ left: geometry.columnStart + geometry.columnWidth }}
+      onKeyDown={event => {
+        const direction = columnDividerDelta(event)
+        if (direction == null) return
+        event.preventDefault()
+        event.stopPropagation()
+        nudgeColumn(direction * TABLE_COLUMN_NUDGE)
+      }} />
     <span className="jot-table-row-indicator" aria-hidden="true" style={{ top: geometry.rowStart, height: geometry.rowHeight }} />
     <span className="jot-table-column-menu" style={{ left: geometry.column }}>
       <ActionMenu key={`column:${menuKey}`} triggerLabel={columnLabel} items={[
@@ -138,5 +194,6 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
       <JotActionIcon name="plus" />
     </button>
     {notice && <span className="jot-table-notice" role="status">{notice}</span>}
+    <span className="jot-table-width-status" role="status" aria-live="polite">{widthMessage}</span>
   </div>, chrome.mount)
 }

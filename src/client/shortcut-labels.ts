@@ -7,7 +7,7 @@ interface Chord { mod?: boolean; alt?: boolean; shift?: boolean; key: string }
 export const SHORTCUTS = {
   bold: { mod: true, key: 'B' }, italic: { mod: true, key: 'I' }, underline: { mod: true, key: 'U' },
   undo: { mod: true, key: 'Z' }, redo: { mod: true, shift: true, key: 'Z' },
-  find: { mod: true, key: 'F' }, save: { mod: true, key: 'S' },
+  find: { mod: true, key: 'F' }, save: { mod: true, key: 'S' }, link: { mod: true, key: 'K' },
   paragraph: { mod: true, alt: true, key: '0' },
   heading1: { mod: true, alt: true, key: '1' }, heading2: { mod: true, alt: true, key: '2' }, heading3: { mod: true, alt: true, key: '3' },
   orderedList: { mod: true, shift: true, key: '7' }, bulletList: { mod: true, shift: true, key: '8' },
@@ -15,6 +15,7 @@ export const SHORTCUTS = {
   codeBlock: { mod: true, alt: true, key: 'C' }, strike: { mod: true, shift: true, key: 'S' },
   code: { mod: true, key: 'E' }, highlight: { mod: true, shift: true, key: 'H' },
   toggleTask: { mod: true, key: 'Enter' }, moveUp: { alt: true, shift: true, key: '↑' }, moveDown: { alt: true, shift: true, key: '↓' },
+  columnNarrow: { mod: true, alt: true, shift: true, key: '←' }, columnWiden: { mod: true, alt: true, shift: true, key: '→' },
   indent: { key: 'Tab' }, outdent: { shift: true, key: 'Tab' },
   searchLibrary: { key: '/' }, shortcutHelp: { key: '?' },
 } satisfies Record<string, Chord>
@@ -29,7 +30,7 @@ export function shortcutLabel(id: ShortcutId, apple = isApplePlatform()): string
   return [chord.mod && 'Ctrl', chord.alt && 'Alt', chord.shift && 'Shift', chord.key].filter(Boolean).join('+')
 }
 
-const ARIA_KEYS: Record<string, string> = { '↑': 'ArrowUp', '↓': 'ArrowDown' }
+const ARIA_KEYS: Record<string, string> = { '↑': 'ArrowUp', '↓': 'ArrowDown', '←': 'ArrowLeft', '→': 'ArrowRight' }
 /** The `aria-keyshortcuts` spelling, which assistive technology reads instead of the glyphs. */
 export function ariaShortcut(id: ShortcutId, apple = isApplePlatform()): string {
   const chord: Chord = SHORTCUTS[id]
@@ -57,12 +58,14 @@ export function shortcutHelpSections(locale: JotLocale, apple = isApplePlatform(
       row(copy('在列表中移动', 'Move through the list'), '↑', '↓'),
       row(copy('打开笔记', 'Open a note'), apple ? '↩' : 'Enter'),
       row(copy('显示快捷键', 'Show shortcuts'), key('shortcutHelp')),
+      row(copy('打开笔记菜单', 'Open the note menu'), 'Shift+F10', copy('菜单键', 'Menu')),
     ] },
     { title: copy('编辑', 'Editing'), rows: [
       row(copy('粗体／斜体／下划线', 'Bold / italic / underline'), key('bold'), key('italic'), key('underline')),
       row(copy('撤销／重做', 'Undo / redo'), key('undo'), key('redo'), ...apple ? [] : ['Ctrl+Y']),
       row(copy('在当前笔记中查找', 'Find in this note'), key('find')),
       row(copy('立即保存', 'Save now'), key('save')),
+      row(copy('添加或编辑链接', 'Add or edit a link'), key('link')),
     ] },
     { title: copy('段落', 'Blocks'), rows: [
       row(copy('正文', 'Body text'), key('paragraph')),
@@ -80,6 +83,10 @@ export function shortcutHelpSections(locale: JotLocale, apple = isApplePlatform(
       row(copy('勾选或取消当前待办', 'Check or uncheck this to-do'), key('toggleTask')),
       row(copy('上移／下移这一项', 'Move this item up / down'), key('moveUp'), key('moveDown')),
       row(copy('缩进／取消缩进', 'Indent / outdent'), key('indent'), key('outdent')),
+      row(copy('已完成项移到底部', 'Move completed items to the bottom'), copy('工具栏「整理」', 'Tidy on the toolbar')),
+    ] },
+    { title: copy('表格', 'Tables'), rows: [
+      row(copy('调整当前列宽', 'Resize this column'), key('columnNarrow'), key('columnWiden')),
     ] },
     { title: copy('边写边转换', 'Type to format'), rows: [
       row(copy('在空行插入标题、清单、表格等', 'Insert a heading, list, table… on an empty line'), '/', ...en ? [] : ['、']),

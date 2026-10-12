@@ -11,7 +11,7 @@
 ## What it does
 
 - **Notes beside the chat**: Jot opens to the right of the conversation. Type `/jot` to open, create or find a note, or open the full page from the left navigation for longer writing.
-- **Write like a document**: headings, checklists, tables, images and attachments, with no Markdown required. Type `/` on an empty line to insert anything, and press `?` for every shortcut.
+- **Write like a document**: headings, checklists, tables, links, images and attachments, with no Markdown required. Type `/` on an empty line to insert anything, and press `?` for every shortcut.
 - **Help from AI**: once you turn on AI collaboration, AI can find, create and edit notes. Its changes are marked, and you can take them back.
 - **Easy to find**: search titles and text, pin what you use often, sort notes into folders, and see checklist progress right in the list.
 - **Import and export**: bring in Markdown notes from Obsidian and similar apps. Export your whole library to Word, PDF or Markdown, and import the ZIP back exactly as it was.

@@ -6,7 +6,7 @@ import { CellSelection, columnResizingPluginKey, TableMap } from '@tiptap/pm/tab
 import { createJotExtensions } from '../src/client/editor-extensions.js'
 import { syncEditorContent } from '../src/client/editor-content.js'
 import { persistableTableWidthPlugin } from '../src/client/table-view.js'
-import { selectedTable, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
+import { COLUMN_WIDTH_ANNOUNCE_MS, columnDividerDelta, columnWidthChange, columnWidthSample, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
 import { docToText, MAX_DOC_BYTES, validateRichDoc } from '../src/model.js'
 
 const paragraph = (text?: string) => ({ type: 'paragraph', ...(text ? { content: [{ type: 'text', text }] } : {}) })
@@ -23,6 +23,41 @@ function select(editor: Editor, tablePos: number, row: number, column: number) {
   editor.view.dispatch(editor.state.tr.setSelection(CellSelection.create(editor.state.doc, position)))
   return selectedTable(editor.state)!
 }
+test('column width is announced only when the same column changes', () => {
+  assert.equal(columnWidthChange(null, { key: '1:1', width: 120 }), null)
+  assert.equal(columnWidthChange({ key: '1:1', width: 120 }, { key: '1:1', width: 136 }), 136)
+  assert.equal(columnWidthChange({ key: '1:1', width: 136 }, { key: '1:2', width: 200 }), null)
+  assert.equal(columnWidthChange({ key: '1:1', width: 136 }, { key: '1:1', width: null }), null)
+  assert.equal(columnWidthChange({ key: '1:1', width: null }, { key: '1:1', width: 104 }), 104)
+  const plain = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }
+  assert.equal(columnDividerDelta({ ...plain, key: 'ArrowLeft' }), -1)
+  assert.equal(columnDividerDelta({ ...plain, key: 'ArrowRight' }), 1)
+  assert.equal(columnDividerDelta({ ...plain, key: 'ArrowUp' }), null)
+  for (const extra of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+    assert.equal(columnDividerDelta({ ...plain, key: 'ArrowRight', [extra]: true }), null, extra)
+  }
+  const first = planWidthAnnouncement(null, 120, 1_000)
+  assert.equal(first.announce, 120)
+  assert.equal(first.waitMs, null)
+  const skipped = planWidthAnnouncement(first.clock, 136, 1_000 + 200)
+  assert.equal(skipped.announce, null)
+  assert.equal(skipped.clock.pending, 136)
+  assert.equal(skipped.waitMs, COLUMN_WIDTH_ANNOUNCE_MS - 200)
+  const later = planWidthAnnouncement(skipped.clock, 152, 1_000 + 400)
+  assert.equal(later.clock.pending, 152)
+  const flushed = flushWidthAnnouncement(later.clock, 1_000 + COLUMN_WIDTH_ANNOUNCE_MS)
+  assert.equal(flushed.announce, 152)
+  assert.equal(flushed.clock.pending, null)
+  const again = planWidthAnnouncement(flushed.clock, 168, flushed.clock.lastAt + COLUMN_WIDTH_ANNOUNCE_MS)
+  assert.equal(again.announce, 168)
+  const pending = planWidthAnnouncement(again.clock, 184, again.clock.lastAt + 100)
+  assert.equal(pending.clock.pending, 184)
+  // 间隔过后立即播报会清掉待播的宽度，旧计时器再到点也没有可说的。
+  const immediate = planWidthAnnouncement(pending.clock, 200, again.clock.lastAt + COLUMN_WIDTH_ANNOUNCE_MS)
+  assert.equal(immediate.announce, 200)
+  assert.equal(flushWidthAnnouncement(immediate.clock, immediate.clock.lastAt + 50).announce, null)
+})
+
 function apply(editor: Editor, action: TableAction) {
   const target = selectedTable(editor.state)!
   const tr = tableActionTransaction(editor.state, target, action)
@@ -31,6 +66,31 @@ function apply(editor: Editor, action: TableAction) {
   editor.view.dispatch(closeHistory(editor.state.tr))
   return validateRichDoc(editor.getJSON())
 }
+
+test('deleting or inserting a column gives the column under the caret a new width key', t => {
+  const widths = [120, 200, 300]
+  const editor = create([{ type: 'table', content: [0, 1].map(row => ({ type: 'tableRow', content: widths.map((width, column) =>
+    cell(`${row}:${column}`, { colwidth: [width] })) })) }])
+  t.after(() => editor.destroy())
+  const middle = select(editor, 0, 0, 1)
+  editor.view.dispatch(closeHistory(nudgeTableColumn(editor.state, middle, 1, TABLE_COLUMN_NUDGE, 200)!))
+  const nudged = columnWidthSample(select(editor, 0, 0, 1))!
+  assert.equal(nudged.width, 216)
+  apply(editor, 'column-delete')
+  const next = select(editor, 0, 0, 1)
+  // 位置和列号都没变，只有列数少了一列；不带列数的键会把这里当成同一列，把 216 报成这一列的宽度。
+  assert.equal(next.tablePos, middle.tablePos)
+  assert.equal(next.right, middle.right)
+  const replacement = columnWidthSample(next)!
+  assert.equal(replacement.width, 300)
+  assert.notEqual(replacement.key, nudged.key)
+  assert.equal(columnWidthChange(nudged, replacement), null)
+  apply(editor, 'column-after')
+  const inserted = columnWidthSample(select(editor, 0, 0, 1))!
+  assert.equal(inserted.width, 300)
+  assert.notEqual(inserted.key, replacement.key)
+  assert.equal(columnWidthSample(null), null)
+})
 
 test('end plus appends to the captured table, even when the caret later enters a different table', t => {
   const editor = create([table(2, 2), paragraph('between'), table(2, 2)])
@@ -297,6 +357,52 @@ function nearByteLimitEditor() {
   assert.equal(new TextEncoder().encode(JSON.stringify(validateRichDoc(editor.getJSON()))).byteLength, MAX_DOC_BYTES - 100)
   return editor
 }
+
+function columnWidths(editor: Editor) {
+  const table = editor.state.doc.firstChild!
+  const map = TableMap.get(table)
+  const widths: Array<number[] | null> = []
+  for (let row = 0; row < map.height; row++) {
+    const seen = new Set<number>()
+    for (let column = 0; column < map.width; column++) {
+      const pos = map.map[row * map.width + column]!
+      if (seen.has(pos)) continue
+      seen.add(pos)
+      widths.push(table.nodeAt(pos)!.attrs.colwidth as number[] | null)
+    }
+  }
+  return widths
+}
+
+test('keyboard column resize writes a clamped width, fills unspecified spans, and undoes one step', t => {
+  const editor = create([{ type: 'table', content: [
+    { type: 'tableRow', content: [cell('merged', { colspan: 2, colwidth: [120, 140] }), cell('right')] },
+    { type: 'tableRow', content: [cell('left'), cell('middle'), cell('end')] },
+  ] }])
+  editor.registerPlugin(history())
+  t.after(() => editor.destroy())
+  const target = select(editor, 0, 0, 0)
+  const resized = resizeTableColumn(editor.state, target, 1, 200)
+  assert.ok(resized)
+  editor.view.dispatch(closeHistory(resized))
+  assert.deepEqual(columnWidths(editor)[0], [120, 200])
+  assert.deepEqual(columnWidths(editor)[3], [200])
+  assert.equal(undoDepth(editor.state), 1)
+  const nudged = nudgeTableColumn(editor.state, selectedTable(editor.state)!, 1, TABLE_COLUMN_NUDGE, 50)
+  assert.ok(nudged)
+  editor.view.dispatch(closeHistory(nudged))
+  assert.deepEqual(columnWidths(editor)[0], [120, 200 + TABLE_COLUMN_NUDGE])
+  const clamped = resizeTableColumn(editor.state, selectedTable(editor.state)!, 0, 10)
+  editor.view.dispatch(closeHistory(clamped!))
+  assert.equal(columnWidths(editor)[0]![0], TABLE_CELL_MIN_WIDTH)
+  const capped = resizeTableColumn(editor.state, selectedTable(editor.state)!, 2, TABLE_CELL_MAX_WIDTH + 400)
+  editor.view.dispatch(closeHistory(capped!))
+  assert.equal(columnWidths(editor)[1]![0], TABLE_CELL_MAX_WIDTH)
+  assert.equal(nudgeTableColumn(editor.state, selectedTable(editor.state)!, 2, TABLE_COLUMN_NUDGE, TABLE_CELL_MAX_WIDTH), null)
+  validateRichDoc(editor.getJSON())
+  assert.equal(editor.commands.undo(), true)
+  assert.equal(columnWidths(editor)[1], null, 'undo removes the width that was not stored before')
+})
 
 test('whole-column width metadata cannot turn a near-limit valid note into an unsavable draft, and its live DOM is restored', t => {
   const editor = nearByteLimitEditor()

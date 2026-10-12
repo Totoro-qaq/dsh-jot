@@ -26,6 +26,7 @@ import { NoteOpenConsumer, readHandoffDraft, type NoteOpenRequest } from './note
 import { consumeJotCommand, type JotCommandRequest } from './commands.js'
 import type { AttachmentInfo, ExportFormat, ImportSummary, JotApi, JotLocale, JotState, LibraryExportFormat, Note, RichNode } from './types.js'
 import type { AttachmentDialogRequest } from './attachment-dialog.js'
+import { activateToast, dismissToast, emptyToastQueue, pushToast, toastDeadline, type ToastNotice } from './toasts.js'
 
 export interface JotAppProps {
   mode: 'compact' | 'wide'
@@ -50,8 +51,6 @@ export interface JotAppProps {
 type SavePhase = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict'
 interface SaveStatus { phase: SavePhase; message?: string }
 type ListView = 'recent' | 'all' | 'trash'
-interface Toast { id: number; text: string; action?: { label: string; run: () => void } }
-
 const POLL_MS = 3000
 const LIST_WIDTH = { min: 220, max: 480, initial: 280 }
 const storage = {
@@ -156,16 +155,30 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   }, [attachmentDialogRequest, onAttachmentDialogHandled, api])
   const [uploadBusy, setUploadBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
-  const [toast, setToast] = useState<Toast | null>(null)
+  const [toastQueue, setToastQueue] = useState(emptyToastQueue)
+  const toast = toastQueue.visible
   const toastSequence = useRef(0)
-  const showToast = useCallback((text: string, action?: Toast['action']) => {
-    setToast({ id: ++toastSequence.current, text, action })
+  const showToast = useCallback((text: string, action?: ToastNotice['action']) => {
+    setToastQueue(queue => pushToast(queue, { id: ++toastSequence.current, text, action }))
   }, [])
+  const dismissVisibleToast = (id: number) => setToastQueue(queue => dismissToast(queue, id))
+  const toastClock = useRef<{ id: number; remainingMs: number } | null>(null)
+  // 只有撤销提示会因忙碌暂停。普通通知的 paused 一直是 false，busy 变化不会重开它的计时器。
+  const toastPaused = Boolean(toast?.action) && busy
   useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => setToast(current => current?.id === toast.id ? null : current), toast.action ? 6000 : 3500)
-    return () => clearTimeout(timer)
-  }, [toast])
+    if (!toast) { toastClock.current = null; return }
+    const decision = toastDeadline({ id: toast.id, hasAction: Boolean(toast.action), busy: toastPaused, clock: toastClock.current })
+    toastClock.current = decision.clock
+    if (decision.delayMs === null) return
+    const started = Date.now()
+    const timer = setTimeout(() => dismissVisibleToast(toast.id), decision.delayMs)
+    return () => {
+      clearTimeout(timer)
+      // 撤销提示被暂停或换掉时，记下还剩多久。普通通知没有 clock。
+      const clock = toastClock.current
+      if (clock?.id === toast.id) toastClock.current = { id: toast.id, remainingMs: Math.max(0, clock.remainingMs - Math.max(0, Date.now() - started)) }
+    }
+  }, [toast, toastPaused])
   const fileInput = useRef<HTMLInputElement>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)
@@ -1277,8 +1290,13 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         {editorPanel}</> : showList ? listPanel : editorPanel}</main>}
     {toast && <div className="jot-toast" role="status" aria-live="polite" key={toast.id}>
       <span>{toast.text}</span>
-      {toast.action && <button className="jot-text-btn" type="button" onClick={() => { const run = toast.action!.run; setToast(null); run() }}>{toast.action.label}</button>}
-      <button className="jot-toast-close" type="button" aria-label={copy('关闭提示', 'Dismiss')} onClick={() => setToast(null)}><JotActionIcon name="close" size={14} /></button>
+      {toast.action && <button className="jot-text-btn" type="button" disabled={busy} onClick={() => {
+        const decision = activateToast(toastQueue, toast.id, busy)
+        if (!decision.run) return
+        setToastQueue(decision.queue)
+        decision.run()
+      }}>{toast.action.label}</button>}
+      <button className="jot-toast-close" type="button" aria-label={copy('关闭提示', 'Dismiss')} onClick={() => dismissVisibleToast(toast.id)}><JotActionIcon name="close" size={14} /></button>
     </div>}
     {contextPosition && draft && <ActionMenu triggerLabel={copy('笔记菜单', 'Note menu')} items={menuItems} position={contextPosition} onClose={() => setContextPosition(null)} />}
     {captureOpen && <Modal size="small" title={copy('摘录到随记', 'Capture text')} closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setCaptureOpen(false) }}>

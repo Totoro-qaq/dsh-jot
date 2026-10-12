@@ -14,6 +14,10 @@ import { JotActionIcon, type JotActionIconName } from './icons.js'
 import { TableControls } from './TableControls.js'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../model.js'
 import { applySlashItem, filterSlashItems, slashLabel, slashMatch, type SlashItem, type SlashMatch } from './slash-menu.js'
+import { applyEditorLink, linkApplyMessage, linkClickAction, linkHrefSegments, linkSelection, openLinkHref, openableLinkHref, removeEditorLink } from './link-commands.js'
+import { linkPopoverFocusKey, linkPopoverInitialFocus } from './LinkPopover.js'
+import { LinkPopover } from './LinkPopover.js'
+import { tidyCompletedTasks } from './list-commands.js'
 import { ariaShortcut, shortcutLabel, SHORTCUTS, withShortcut, type ShortcutId } from './shortcut-labels.js'
 import { jotStyles } from './styles.js'
 import type { JotLocale, RichDoc } from './types.js'
@@ -31,6 +35,37 @@ export interface RichEditorProps {
 }
 
 interface SlashMenuState { match: SlashMatch; items: SlashItem[]; index: number; caret: { left: number; top: number; bottom: number } }
+interface LinkDraft {
+  id: number
+  from: number
+  to: number
+  original: string
+  /** 浮层打开时文档里的地址，去掉链接时用来比对。 */
+  originalHref: string | null
+  /** 每一段当时的地址。混合选区不能只记一个收成 null 的值。 */
+  originalSegments: ReturnType<typeof linkHrefSegments>
+  text: string
+  href: string
+  existing: boolean
+  caret: { left: number; top: number; bottom: number }
+}
+
+/** 用被点中的 `<a>` 自己的 href；带账号口令的地址渲染时没有 href。附件卡片交给浏览器。 */
+function linkAction(view: { editable: boolean }, event: MouseEvent): { action: ReturnType<typeof linkClickAction>; href: string | null } {
+  const anchor = event.target instanceof Element ? event.target.closest('a') : null
+  if (!anchor || anchor.hasAttribute('data-jot-attachment-id')) return { action: 'ignore', href: null }
+  const href = anchor.getAttribute('href')
+  return { action: linkClickAction(event, href, view.editable), href }
+}
+
+/** 只在 click（含键盘 Enter）和 auxclick 上打开，所以每次激活最多打开一次。 */
+function activateLink(view: { editable: boolean }, event: MouseEvent): boolean {
+  const { action, href } = linkAction(view, event)
+  if (action === 'ignore') return false
+  event.preventDefault()
+  if (action === 'open' && href) openLinkHref(href)
+  return true
+}
 
 export interface RichEditorActions {
   /** Native bridges must pass the focused target; input fields never format or undo the body. */
@@ -83,6 +118,13 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
   const slashMenu = useRef<HTMLDivElement>(null)
   const [slashPlacement, setSlashPlacement] = useState<{ left: number; top: number } | null>(null)
   const slashId = useId()
+  const [link, setLink] = useState<LinkDraft | null>(null)
+  const linkState = useRef<LinkDraft | null>(null)
+  linkState.current = link
+  const linkMenu = useRef<HTMLDivElement>(null)
+  const [linkPlacement, setLinkPlacement] = useState<{ left: number; top: number } | null>(null)
+  const [linkError, setLinkError] = useState('')
+  const linkSession = useRef(0)
   const refreshSlash = useRef(() => {})
   refreshSlash.current = () => {
     const current = instance.current
@@ -111,6 +153,47 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
   }
   const chooseSlashRef = useRef(chooseSlash)
   chooseSlashRef.current = chooseSlash
+  const closeLink = () => { setLink(null); setLinkError(''); instance.current?.commands.focus() }
+  const openLink = () => {
+    const current = instance.current
+    if (!current) return false
+    const selection = linkSelection(current.state)
+    if (callbacks.current.readOnly && !selection.href) return false
+    const pos = Math.max(1, Math.min(selection.from, current.state.doc.content.size))
+    const coords = current.view.coordsAtPos(pos)
+    setFormatOpen(false)
+    setSlash(null)
+    setLinkError('')
+    setLinkPlacement(null)
+    setLink({
+      id: ++linkSession.current, from: selection.from, to: selection.to,
+      original: current.state.doc.textBetween(selection.from, selection.to, '\n'),
+      originalHref: selection.href,
+      originalSegments: linkHrefSegments(current.state.doc, selection.from, selection.to),
+      text: selection.text, href: selection.href ?? '', existing: Boolean(selection.href),
+      caret: { left: coords.left, top: coords.top, bottom: coords.bottom },
+    })
+    return true
+  }
+  const openLinkRef = useRef(openLink)
+  openLinkRef.current = openLink
+  const submitLink = () => {
+    const current = instance.current
+    const draft = linkState.current
+    if (!current || !draft || callbacks.current.readOnly) return
+    const result = applyEditorLink(current.state, current.view.dispatch, draft)
+    if (result === true) { setLink(null); setLinkError(''); current.commands.focus(); return }
+    setLinkError(linkApplyMessage(result, callbacks.current.locale))
+  }
+  const removeLink = () => {
+    const current = instance.current
+    const draft = linkState.current
+    if (!current || !draft || callbacks.current.readOnly) return
+    // 只比对打开浮层那一刻的地址和原文；之后改过的输入框不算。
+    const opened = { from: draft.from, to: draft.to, original: draft.original, href: draft.originalHref }
+    if (removeEditorLink(current.state, current.view.dispatch, opened)) { setLink(null); setLinkError(''); current.commands.focus(); return }
+    setLinkError(linkApplyMessage('stale', callbacks.current.locale))
+  }
 
   useEffect(() => {
     if (!mount.current) return
@@ -121,6 +204,9 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       extensions: createJotExtensions({ resolveAttachmentUrl: id => callbacks.current.resolveAttachmentUrl?.(id) ?? managedAttachmentUrl(id),
         locale: () => callbacks.current.locale }),
       editorProps: {
+        handleDOMEvents: { click: activateLink, auxclick: activateLink },
+        // 同一次激活的 mouseup 只认领、不打开：否则 ProseMirror 会按 Ctrl／Command 选中整段，Linux 的中键还会粘贴。
+        handleClick: (view, _pos, event) => linkAction(view, event).action !== 'ignore',
         handleKeyDown: (_view, event) => {
           const menu = slashState.current
           if (menu && !event.isComposing && event.keyCode !== 229 && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -270,6 +356,41 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
     return () => { page?.removeEventListener('scroll', follow, true); page?.removeEventListener('resize', follow) }
   }, [slashOpen])
   useEffect(() => { slashMenu.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }) }, [slash?.index])
+  const linkOpen = link !== null
+  useLayoutEffect(() => {
+    const element = linkMenu.current
+    if (!link || !element) { setLinkPlacement(null); return }
+    const view = element.ownerDocument.defaultView
+    if (!view) return
+    const { width, height } = element.getBoundingClientRect()
+    const below = link.caret.bottom + 4
+    const top = below + height <= view.innerHeight - 8 ? below : Math.max(8, link.caret.top - 4 - height)
+    const left = Math.min(Math.max(8, link.caret.left), Math.max(8, view.innerWidth - width - 8))
+    setLinkPlacement(previous => previous?.left === left && previous.top === top ? previous : { left, top })
+  }, [link?.id, link?.caret.left, link?.caret.top, link?.caret.bottom, linkError])
+  const linkFocusKey = link && linkPlacement ? linkPopoverFocusKey({ id: link.id, readOnly, placed: true }) : null
+  useEffect(() => {
+    const current = linkState.current
+    if (!linkFocusKey || !current) return
+    // 只在打开、只读变化或浮层就位时聚焦。文字和网址随输入变化，不能每次都重新选中。
+    const choice = linkPopoverInitialFocus({ readOnly, text: current.text, canOpen: Boolean(openableLinkHref(current.href)) })
+    const selector = choice === 'href' ? '.jot-link-href' : choice === 'text' ? '.jot-link-text'
+      : choice === 'open' ? '.jot-link-open' : '[role="dialog"]'
+    const field = linkMenu.current?.querySelector<HTMLElement>(selector)
+    field?.focus()
+    if (field instanceof HTMLInputElement) field.select()
+  }, [linkFocusKey])
+  useEffect(() => {
+    if (!linkOpen) return
+    const page = root.current?.ownerDocument
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (linkMenu.current?.contains(target) || root.current?.querySelector('.jot-format-link')?.contains(target)) return
+      setLink(null); setLinkError('')
+    }
+    page?.addEventListener('pointerdown', outside, true)
+    return () => page?.removeEventListener('pointerdown', outside, true)
+  }, [linkOpen])
 
   const selectMatch = (next: number) => {
     if (!editor || !matches.length) return
@@ -293,8 +414,10 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       openFind()
       return true
     }
-    if (readOnly || !mount.current?.contains(target)
+    if (!mount.current?.contains(target)
       || target instanceof Element && target.closest('input,textarea,select,[data-jot-table-chrome]')) return false
+    if (action === 'link') return openLinkRef.current()
+    if (readOnly) return false
     switch (action) {
       case 'bold': current.commands.toggleBold(); break
       case 'italic': current.commands.toggleItalic(); break
@@ -369,9 +492,10 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       const action = editorShortcut(event.nativeEvent)
       if (action && shortcutHandler.current(action, event.target)) {
         event.preventDefault(); event.stopPropagation()
-      } else if (event.key === 'Escape' && (findOpen || formatOpen)) {
+      } else if (event.key === 'Escape' && (findOpen || formatOpen || link)) {
         event.preventDefault(); event.stopPropagation()
-        if (formatOpen) { setFormatOpen(false); editor?.commands.focus() } else closeFind()
+        if (link) closeLink()
+        else if (formatOpen) { setFormatOpen(false); editor?.commands.focus() } else closeFind()
       }
     }}>
       <div className="jot-format-bar" role="toolbar" aria-label={en ? 'Text formatting' : '文字格式'}>
@@ -388,6 +512,22 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
           aria-pressed={Boolean(editor?.isActive('taskList'))} disabled={readOnly || !editor}
           onMouseDown={event => event.preventDefault()} onClick={() => editor?.chain().focus().toggleTaskList().run()}>
           <EditorControlIcon name="todo" />
+        </button>
+        {editor?.isActive('taskList') && <button type="button" className="jot-format jot-editor-control jot-tidy-tasks"
+          aria-label={en ? 'Move completed items to the bottom' : '把已完成项移到底部'}
+          title={en ? 'Move completed items to the bottom' : '把已完成项移到底部'}
+          disabled={readOnly || !tidyCompletedTasks(editor.state)}
+          onMouseDown={event => event.preventDefault()}
+          onClick={() => { const current = instance.current; if (current) tidyCompletedTasks(current.state, current.view) }}>
+          <span className="jot-editor-control-label">{en ? 'Tidy' : '整理'}</span>
+        </button>}
+        <button type="button" className="jot-format jot-editor-control jot-editor-control-icon-only jot-format-link"
+          aria-label={en ? 'Link' : '链接'} title={withShortcut(en ? 'Link' : '链接', 'link')}
+          aria-keyshortcuts={ariaShortcut('link')} aria-haspopup="dialog" aria-expanded={Boolean(link)}
+          aria-pressed={Boolean(editor?.isActive('link'))}
+          disabled={!editor || (readOnly && !editor.isActive('link'))}
+          onMouseDown={event => event.preventDefault()} onClick={() => { if (link) closeLink(); else openLink() }}>
+          <JotActionIcon name="link" size={16} />
         </button>
         <span className="jot-format-divider" aria-hidden="true" />
         <button type="button" className="jot-format jot-editor-control jot-find-open" aria-expanded={findOpen} disabled={!editor}
@@ -478,6 +618,17 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
             {item.shortcut && <kbd className="jot-keys" aria-hidden="true">{shortcutLabel(item.shortcut)}</kbd>}
           </div>)}
           <div className="jot-slash-hint" aria-hidden="true">{en ? '↑↓ choose · Enter insert · Esc close' : '↑↓ 选择 · 回车插入 · Esc 关闭'}</div>
+        </div>
+      </div>, globalThis.document.body)}
+      {link && globalThis.document && createPortal(<div className="jot-overlay-root">
+        <style>{jotStyles}</style>
+        {/* 定位写在这一层。内层卡片不能再 position:fixed，否则这里量到的宽高是 0。 */}
+        <div ref={linkMenu} style={{ position: 'fixed', left: linkPlacement?.left ?? 0, top: linkPlacement?.top ?? 0, visibility: linkPlacement ? 'visible' : 'hidden', zIndex: 45 }}>
+          <LinkPopover key={link.id} locale={locale} readOnly={readOnly} text={link.text} href={link.href}
+            existing={link.existing} canOpen={Boolean(openableLinkHref(link.href))} error={linkError}
+            onText={value => setLink(current => current ? { ...current, text: value } : current)}
+            onHref={value => { setLinkError(''); setLink(current => current ? { ...current, href: value } : current) }}
+            onSubmit={submitLink} onOpen={() => { openLinkHref(link.href) }} onRemove={removeLink} onClose={closeLink} />
         </div>
       </div>, globalThis.document.body)}
     </div>

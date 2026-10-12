@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { JotActionIcon } from './icons.js'
-import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, nextActiveNoteId, noteDateValue, noteDisplay, noteExcerpt, taskProgress } from './note-list.js'
+import { activateNoteListItem, buildNoteListRows, formatNoteDate, highlightSegments, isNoteContextMenuKey, nextActiveNoteId, noteDateValue, noteDisplay, noteExcerpt, taskProgress } from './note-list.js'
 import type { NavigationKey, NoteDateBasis } from './note-list.js'
 import type { Folder, JotLocale, Note } from './types.js'
 
@@ -18,7 +18,7 @@ export interface NoteListProps {
   selectMode?: boolean
   selectedNoteIds?: ReadonlySet<string>
   onToggleSelection?: (note: Note) => void
-  onContextMenu?: (note: Note, event: MouseEvent) => void
+  onContextMenu?: (note: Note, event: { preventDefault(): void; clientX: number; clientY: number }) => void
   dateBasis?: NoteDateBasis
   /** The current folder scope already names this metadata. */
   hideFolderName?: boolean
@@ -84,6 +84,16 @@ export function NoteList({ notes, selectedId = null, onSelect, query = '', folde
   const activate = (note: Note) => activateNoteListItem(note, { selectMode, onSelect, onToggleSelection })
 
   const navigate = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (isNoteContextMenuKey(event) && onContextMenu && !selectMode) {
+      const note = noteRows.find(row => row.note.id === activeId)?.note
+      const button = activeId ? buttons.current.get(activeId) : undefined
+      if (!note || !button) return
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = button.getBoundingClientRect()
+      onContextMenu(note, { preventDefault() {}, clientX: rect.left + Math.min(24, rect.width / 2), clientY: Math.max(8, rect.bottom - 4) })
+      return
+    }
     if (event.altKey || event.ctrlKey || event.metaKey) return
     if (event.key === 'Enter' || event.key === ' ') {
       const note = noteRows.find(row => row.note.id === activeId)?.note

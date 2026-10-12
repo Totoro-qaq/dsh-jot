@@ -1,6 +1,8 @@
 import { Extension } from '@tiptap/core'
-import { Fragment } from '@tiptap/pm/model'
+import { closeHistory } from '@tiptap/pm/history'
+import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
 import { Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 
 type Dispatch = ((tr: Transaction) => void) | undefined
 const LIST_ITEMS = new Set(['listItem', 'taskItem'])
@@ -53,6 +55,57 @@ export function moveListItem(direction: 'up' | 'down') {
     dispatch(tr.setSelection(moved).scrollIntoView())
     return true
   }
+}
+
+const completedTask = (node: ProseMirrorNode) => node.type.name === 'taskItem' && node.attrs.checked === true
+
+/**
+ * 把当前核对清单里已勾选的项移到底部。未完成和已完成各自保持原来的相对顺序，
+ * 嵌套清单随所属项一起移动，不打散。已经整理好、或没有可移动的项时不产生撤销记录。
+ */
+export function tidyCompletedTasks(state: EditorState, view?: EditorView): boolean {
+  const depth = sharedAncestor(state, new Set(['taskList']))
+  if (depth === null) return false
+  const { $from } = state.selection
+  const list = $from.node(depth)
+  const children: ProseMirrorNode[] = []
+  list.forEach(child => children.push(child))
+  let seenDone = false
+  let needsMove = false
+  for (const child of children) {
+    if (completedTask(child)) seenDone = true
+    else if (seenDone) needsMove = true
+  }
+  if (!needsMove) return false
+  const ordered = [...children.filter(child => !completedTask(child)), ...children.filter(completedTask)]
+  if (!view) return true
+  const start = $from.start(depth)
+  const tr = state.tr.replaceWith(start, $from.end(depth), Fragment.from(ordered))
+  const remap = (pos: number, $pos: ResolvedPos) => {
+    if ($pos.depth <= depth) return pos
+    const child = children[$pos.index(depth)]
+    const next = child ? ordered.indexOf(child) : -1
+    if (!child || next < 0) return pos
+    let cursor = start
+    for (let index = 0; index < next; index++) cursor += ordered[index]!.nodeSize
+    return cursor + (pos - $pos.before(depth + 1))
+  }
+  const anchor = remap(state.selection.anchor, state.doc.resolve(state.selection.anchor))
+  const head = remap(state.selection.head, state.doc.resolve(state.selection.head))
+  const selection = state.selection instanceof TextSelection
+    ? TextSelection.create(tr.doc, anchor, head) : Selection.near(tr.doc.resolve(head))
+  dispatchOwnStep(view, tr.setSelection(selection).scrollIntoView())
+  return true
+}
+
+/**
+ * 这一步自己成为撤销记录，并且不并进前后 500 毫秒内的输入。
+ * closeHistory 会把上一段历史切开；空的第二次调用把 prevTime 置 0，后面的输入另起一步。
+ * 第二次必须用视图上的当前状态。本地 apply 出来的文档即使内容相同也不是同一个对象，插件追加的步骤会对不上。
+ */
+function dispatchOwnStep(view: EditorView, tr: Transaction) {
+  view.dispatch(closeHistory(tr))
+  view.dispatch(closeHistory(view.state.tr))
 }
 
 /** Keys for checklist work; they only act inside list items, so other blocks keep their defaults. */

@@ -123,6 +123,20 @@ export function validateActor(actor: unknown): Actor {
   return actor
 }
 
+/**
+ * http(s) 地址是否带用户名或口令。mailto 里的 @ 不算。
+ * 已经保存在笔记里的这类地址仍能通过 `validateRichDoc` 加载；拒绝发生在新建、粘贴和打开。
+ */
+export function linkHrefHasCredentials(href: string): boolean {
+  if (!/^https?:\/\//iu.test(href)) return false
+  try {
+    const url = new URL(href)
+    return url.username !== '' || url.password !== ''
+  } catch {
+    return false
+  }
+}
+
 function mark(value: unknown): RichMark {
   const data = record(value, 'mark')
   onlyKeys(data, ['type', 'attrs'], 'mark')
@@ -143,6 +157,7 @@ function mark(value: unknown): RichMark {
   const attrs = record(data.attrs, 'link attrs')
   onlyKeys(attrs, ['href', 'target', 'rel', 'class', 'title'], 'link attrs')
   const href = boundedString(attrs.href, 2_048, 'link href', false)
+  // 带账号口令的地址仍允许加载，否则整库都打不开。新建和点击另有检查。
   if (!/^(https?:\/\/|mailto:|tel:|#)/i.test(href) || /[\u0000-\u0020]/.test(href)) invalid('Unsafe link href')
   const result: RichAttrs = { href }
   if (attrs.target !== undefined) {
