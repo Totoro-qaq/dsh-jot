@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { ActionMenu, type ActionMenuItem } from './ActionMenu.js'
 import { JotActionIcon } from './icons.js'
-import { columnWidthChange, explicitColumnWidth, nudgeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget } from './table-actions.js'
+import { columnDividerDelta, columnWidthChange, explicitColumnWidth, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget, type WidthAnnouncementClock } from './table-actions.js'
 
 interface ChromeGeometry {
   column: number; row: number; bottom: number; middle: number
@@ -33,15 +33,38 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
   const [columnWidth, setColumnWidth] = useState(TABLE_CELL_MIN_WIDTH)
   const [widthMessage, setWidthMessage] = useState('')
   const seenWidth = useRef<ColumnWidthSample | null>(null)
+  const announceClock = useRef<WidthAnnouncementClock | null>(null)
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const widthSample: ColumnWidthSample | null = target
     ? { key: `${target.tablePos}:${target.right}`, width: explicitColumnWidth(target.table, target.right - 1) }
     : null
+  const widthText = (width: number) => en ? `Column ${target?.right ?? ''} width ${width} pixels` : `第 ${target?.right ?? ''} 列宽度 ${width} 像素`
   useEffect(() => {
     if (!widthSample) return
     const next = columnWidthChange(seenWidth.current, widthSample)
+    const switched = Boolean(seenWidth.current && seenWidth.current.key !== widthSample.key)
     seenWidth.current = widthSample
-    if (next !== null) setWidthMessage(en ? `Column ${target?.right ?? ''} width ${next} pixels` : `第 ${target?.right ?? ''} 列宽度 ${next} 像素`)
+    if (switched) {
+      if (announceTimer.current) clearTimeout(announceTimer.current)
+      announceTimer.current = null
+      if (announceClock.current) announceClock.current = { ...announceClock.current, pending: null }
+    }
+    if (next === null) return
+    const plan = planWidthAnnouncement(announceClock.current, next, Date.now())
+    announceClock.current = plan.clock
+    if (plan.announce !== null) setWidthMessage(widthText(plan.announce))
+    if (plan.waitMs != null) {
+      if (announceTimer.current) clearTimeout(announceTimer.current)
+      const wait = plan.waitMs
+      announceTimer.current = setTimeout(() => {
+        announceTimer.current = null
+        const flushed = flushWidthAnnouncement(announceClock.current ?? { lastAt: 0, pending: null }, Date.now())
+        announceClock.current = flushed.clock
+        if (flushed.announce !== null) setWidthMessage(widthText(flushed.announce))
+      }, wait)
+    }
   }, [widthSample?.key, widthSample?.width, en, target?.right])
+  useEffect(() => () => { if (announceTimer.current) clearTimeout(announceTimer.current) }, [])
 
   useEffect(() => { setNotice('') }, [target?.tablePos, target?.table])
   useLayoutEffect(() => {
@@ -137,10 +160,11 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
       aria-valuemin={TABLE_CELL_MIN_WIDTH} aria-valuemax={TABLE_CELL_MAX_WIDTH} aria-valuenow={shownWidth}
       style={{ left: geometry.columnStart + geometry.columnWidth }}
       onKeyDown={event => {
-        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+        const direction = columnDividerDelta(event)
+        if (direction == null) return
         event.preventDefault()
         event.stopPropagation()
-        nudgeColumn(event.key === 'ArrowLeft' ? -TABLE_COLUMN_NUDGE : TABLE_COLUMN_NUDGE)
+        nudgeColumn(direction * TABLE_COLUMN_NUDGE)
       }} />
     <span className="jot-table-row-indicator" aria-hidden="true" style={{ top: geometry.rowStart, height: geometry.rowHeight }} />
     <span className="jot-table-column-menu" style={{ left: geometry.column }}>

@@ -148,6 +148,33 @@ export function columnWidthChange(previous: ColumnWidthSample | null, next: Colu
   return next.width
 }
 
+/** 列宽分隔条只响应没有修饰键的左右方向键。Shift、Alt、Ctrl、Command 留给选择和快捷键。 */
+export function columnDividerDelta(event: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): -1 | 1 | null {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null
+  if (event.key === 'ArrowLeft') return -1
+  if (event.key === 'ArrowRight') return 1
+  return null
+}
+
+/** 连续改列宽时，播报至少间隔这么久，停手后仍会说出最后一次宽度。 */
+export const COLUMN_WIDTH_ANNOUNCE_MS = 1000
+
+export interface WidthAnnouncementClock { lastAt: number; pending: number | null }
+
+/**
+ * 间隔内的新宽度先记着，到点再播报最新的一次。第一次和间隔已过则立刻播报。
+ */
+export function planWidthAnnouncement(clock: WidthAnnouncementClock | null, width: number, now: number, interval = COLUMN_WIDTH_ANNOUNCE_MS): { clock: WidthAnnouncementClock; announce: number | null; waitMs: number | null } {
+  if (!clock || now - clock.lastAt >= interval) return { clock: { lastAt: now, pending: null }, announce: width, waitMs: null }
+  return { clock: { lastAt: clock.lastAt, pending: width }, announce: null, waitMs: clock.lastAt + interval - now }
+}
+
+/** 到点时说出还没播报的宽度。 */
+export function flushWidthAnnouncement(clock: WidthAnnouncementClock, now: number): { clock: WidthAnnouncementClock; announce: number | null } {
+  if (clock.pending == null) return { clock, announce: null }
+  return { clock: { lastAt: now, pending: null }, announce: clock.pending }
+}
+
 /** 在现有宽度（或实测宽度）上增减一列。到达上下限时不产生新的撤销步骤。 */
 export function nudgeTableColumn(state: EditorState, target: TableTarget, column: number, delta: number, measured: number): Transaction | null {
   const table = state.doc.nodeAt(target.tablePos)

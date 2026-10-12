@@ -213,12 +213,16 @@ export function linkApplyMessage(result: LinkApplyFailure, locale: JotLocale): s
  */
 export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   from: number; to: number; original: string; text: string; href: string
+  /** 打开浮层时文档里的地址。传入后，保存前必须仍然一致。 */
+  originalHref?: string | null
 }): true | LinkApplyFailure {
   const link = state.schema.marks.link
   if (!link) return 'unsupported'
   const { from, to } = input
   if (from < 0 || to < from || to > state.doc.content.size) return 'stale'
   if (state.doc.textBetween(from, to, '\n') !== input.original) return 'stale'
+  // 浮层打开后地址若已被改掉，不能用旧草稿盖掉。没有这条链接时 originalHref 为 null。
+  if (input.originalHref !== undefined && hrefInRange(state.doc, from, to) !== input.originalHref) return 'stale'
   const href = normalizeLinkHref(input.href)
   if (!href) return 'invalid-href'
   if (blocksLink(state.doc, from, to)) return 'unsupported'
@@ -316,12 +320,15 @@ export interface LinkClickProbe {
   attachment: boolean
 }
 
+/** 两条链接相接时，点在左侧末尾取 before，点在右侧开头取 after。 */
+export type LinkEdge = 'before' | 'after'
+
 /**
  * 点击处文档里的链接地址。
- * 两条链接相接时，边界上的 `marks()` 会因为链接标记 inclusive 而落到左侧，所以先看右侧的 `nodeAfter`。
+ * 落在文字内部时就是这一段。落在边界上时按被点中的一侧取，不能一律取后面那条。
  * 渲染时若没有 href，仍以标记为准，避免浏览器把空地址当成当前页。
  */
-export function linkMarkHref(state: EditorState, pos: number): string | null {
+export function linkMarkHref(state: EditorState, pos: number, edge: LinkEdge = 'after'): string | null {
   const link = state.schema.marks.link
   if (!link) return null
   const $pos = state.doc.resolve(Math.max(0, Math.min(pos, state.doc.content.size)))
@@ -330,7 +337,28 @@ export function linkMarkHref(state: EditorState, pos: number): string | null {
     const href = mark ? String(mark.attrs.href ?? '') : ''
     return href || null
   }
-  return hrefOf($pos.nodeAfter?.marks) ?? hrefOf($pos.marks()) ?? hrefOf($pos.nodeBefore?.marks)
+  const after = hrefOf($pos.nodeAfter?.marks)
+  const before = hrefOf($pos.nodeBefore?.marks)
+  const here = hrefOf($pos.marks())
+  if ($pos.textOffset > 0) return after ?? here ?? before
+  if (edge === 'before') return before ?? here ?? after
+  return after ?? here ?? before
+}
+
+/** 被点中的 `<a>` 起点在点击位置之前，说明点的是左侧链接的末尾。 */
+export function linkEdgeAtClick(clickPos: number, anchorPos: number): LinkEdge {
+  return anchorPos < clickPos ? 'before' : 'after'
+}
+
+/**
+ * 优先用被点中的 `<a>` 自己的 href。属性被省略时（账号口令地址），按点击落在该元素的哪一侧读标记。
+ */
+export function resolveClickedLinkHref(state: EditorState, clickPos: number | null, anchorPos: number | null, domHref: string | null): string | null {
+  if (domHref) return domHref
+  const pos = clickPos ?? anchorPos
+  if (pos == null) return null
+  const edge = anchorPos == null || clickPos == null ? 'after' : linkEdgeAtClick(clickPos, anchorPos)
+  return linkMarkHref(state, pos, edge)
 }
 
 /** 编辑时单击只落光标；只读或按住主修饰键才打开。带账号口令的地址一律拦截，附件卡片仍走原来的预览。 */
@@ -353,13 +381,29 @@ export function handleLinkClick(action: 'ignore' | 'open' | 'place-caret' | 'blo
 
 /**
  * 原生 `click` 和中键 `auxclick` 会跟着 href 导航，mouseup 上的 preventDefault 拦不住。
- * 只拦带账号口令的地址；附件卡片和普通链接仍走原来的点击处理。
+ * 我们自己会打开或拦截时都要取消，包括只读笔记里的普通链接：否则 `window.open` 之后，
+ * `<a target="_blank">` 还会再开一次。附件卡片和我们不处理的点击仍交给浏览器。
  */
-export function blockCredentialLinkEvent(event: { type: string; preventDefault(): void }, href: string | null, attachment: boolean): boolean {
+export function blockCredentialLinkEvent(event: {
+  type: string
+  metaKey?: boolean
+  ctrlKey?: boolean
+  preventDefault(): void
+}, href: string | null, attachment: boolean, editable = true): boolean {
   if (attachment || (event.type !== 'click' && event.type !== 'auxclick')) return false
-  if (!href || !linkHrefHasCredentials(href)) return false
+  if (!href) return false
+  const action = linkClickAction({
+    button: event.type === 'auxclick' ? 1 : 0,
+    metaKey: Boolean(event.metaKey), ctrlKey: Boolean(event.ctrlKey), editable, href, attachment: false,
+  })
+  if (action !== 'open' && action !== 'block') return false
   event.preventDefault()
   return true
+}
+
+/** 浮层里删除没有生效时的说明。正文或地址已经对不上，请用户重新打开。 */
+export function linkRemoveMessage(locale: JotLocale): string {
+  return linkApplyMessage('stale', locale)
 }
 
 /** 删除时只用浮层打开那一刻的地址和原文。之后改过的输入不能拿来比对，否则删除会静默失败。 */

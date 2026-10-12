@@ -6,7 +6,7 @@ import { CellSelection, columnResizingPluginKey, TableMap } from '@tiptap/pm/tab
 import { createJotExtensions } from '../src/client/editor-extensions.js'
 import { syncEditorContent } from '../src/client/editor-content.js'
 import { persistableTableWidthPlugin } from '../src/client/table-view.js'
-import { columnWidthChange, nudgeTableColumn, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
+import { COLUMN_WIDTH_ANNOUNCE_MS, columnDividerDelta, columnWidthChange, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, resizeTableColumn, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type TableAction } from '../src/client/table-actions.js'
 import { docToText, MAX_DOC_BYTES, validateRichDoc } from '../src/model.js'
 
 const paragraph = (text?: string) => ({ type: 'paragraph', ...(text ? { content: [{ type: 'text', text }] } : {}) })
@@ -29,6 +29,27 @@ test('column width is announced only when the same column changes', () => {
   assert.equal(columnWidthChange({ key: '1:1', width: 136 }, { key: '1:2', width: 200 }), null)
   assert.equal(columnWidthChange({ key: '1:1', width: 136 }, { key: '1:1', width: null }), null)
   assert.equal(columnWidthChange({ key: '1:1', width: null }, { key: '1:1', width: 104 }), 104)
+  const plain = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }
+  assert.equal(columnDividerDelta({ ...plain, key: 'ArrowLeft' }), -1)
+  assert.equal(columnDividerDelta({ ...plain, key: 'ArrowRight' }), 1)
+  assert.equal(columnDividerDelta({ ...plain, key: 'ArrowUp' }), null)
+  for (const extra of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey'] as const) {
+    assert.equal(columnDividerDelta({ ...plain, key: 'ArrowRight', [extra]: true }), null, extra)
+  }
+  const first = planWidthAnnouncement(null, 120, 1_000)
+  assert.equal(first.announce, 120)
+  assert.equal(first.waitMs, null)
+  const skipped = planWidthAnnouncement(first.clock, 136, 1_000 + 200)
+  assert.equal(skipped.announce, null)
+  assert.equal(skipped.clock.pending, 136)
+  assert.equal(skipped.waitMs, COLUMN_WIDTH_ANNOUNCE_MS - 200)
+  const later = planWidthAnnouncement(skipped.clock, 152, 1_000 + 400)
+  assert.equal(later.clock.pending, 152)
+  const flushed = flushWidthAnnouncement(later.clock, 1_000 + COLUMN_WIDTH_ANNOUNCE_MS)
+  assert.equal(flushed.announce, 152)
+  assert.equal(flushed.clock.pending, null)
+  const again = planWidthAnnouncement(flushed.clock, 168, flushed.clock.lastAt + COLUMN_WIDTH_ANNOUNCE_MS)
+  assert.equal(again.announce, 168)
 })
 
 function apply(editor: Editor, action: TableAction) {

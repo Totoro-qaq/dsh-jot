@@ -6,7 +6,7 @@ import { Fragment, Slice } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
 import { createJotExtensions } from '../src/client/editor-extensions.js'
 import { linkPopoverFocusKey, linkPopoverInitialFocus } from '../src/client/LinkPopover.js'
-import { applyEditorLink, blockCredentialLinkEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkMarkHref, linkSelection, normalizeLinkHref, openedLinkRange, openableLinkHref, openLinkHref, removeEditorLink } from '../src/client/link-commands.js'
+import { applyEditorLink, blockCredentialLinkEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkEdgeAtClick, linkMarkHref, linkRemoveMessage, linkSelection, normalizeLinkHref, openedLinkRange, openableLinkHref, openLinkHref, removeEditorLink, resolveClickedLinkHref } from '../src/client/link-commands.js'
 import { MAX_TEXT_LENGTH, validateRichDoc } from '../src/model.js'
 
 const text = (value: string, marks?: JSONContent['marks']) => ({ type: 'text', text: value, ...(marks ? { marks } : {}) })
@@ -366,25 +366,36 @@ test('a credential link is rendered without an href, and click and middle-click 
   assert.equal(prevented, 2)
   assert.equal(blockCredentialLinkEvent({ type: 'click', preventDefault: prevent }, 'https://example.com', false), false)
   assert.equal(blockCredentialLinkEvent({ type: 'auxclick', preventDefault: prevent }, 'https://example.com', false), false)
+  assert.equal(blockCredentialLinkEvent({ type: 'click', preventDefault: prevent }, 'https://example.com', false, false), true)
+  assert.equal(blockCredentialLinkEvent({ type: 'click', ctrlKey: true, preventDefault: prevent }, 'https://example.com', false, true), true)
   assert.equal(blockCredentialLinkEvent({ type: 'mousedown', preventDefault: prevent }, 'https://user:pass@example.com/a', false), false)
   assert.equal(blockCredentialLinkEvent({ type: 'auxclick', preventDefault: prevent }, 'https://user:pass@example.com/a', true), false)
-  assert.equal(prevented, 2)
+  assert.equal(prevented, 4)
 })
 
-test('the boundary between two links resolves to the link on the right', t => {
+test('a click on either side of two adjacent links uses the link that was clicked', t => {
   const editor = create([paragraph(
     text('left', [{ type: 'link', attrs: { href: 'https://left.example' } }]),
     text('right', [{ type: 'link', attrs: { href: 'https://right.example' } }]),
   )])
   t.after(() => editor.destroy())
+  let leftStart = -1
   let boundary = -1
   editor.state.doc.descendants((node, position) => {
+    if (leftStart < 0 && node.isText && node.text === 'left') leftStart = position
     if (boundary < 0 && node.isText && node.text === 'right') boundary = position
   })
-  assert.ok(boundary > 0)
-  assert.equal(linkMarkHref(editor.state, boundary), 'https://right.example')
+  assert.ok(boundary > leftStart)
+  assert.equal(linkEdgeAtClick(boundary, leftStart), 'before')
+  assert.equal(linkEdgeAtClick(boundary, boundary), 'after')
+  assert.equal(linkMarkHref(editor.state, boundary, 'before'), 'https://left.example')
+  assert.equal(linkMarkHref(editor.state, boundary, 'after'), 'https://right.example')
   assert.equal(linkMarkHref(editor.state, boundary + 1), 'https://right.example')
   assert.equal(linkMarkHref(editor.state, boundary - 1), 'https://left.example')
+  assert.equal(resolveClickedLinkHref(editor.state, boundary, leftStart, 'https://left.example'), 'https://left.example')
+  assert.equal(resolveClickedLinkHref(editor.state, boundary, boundary, 'https://right.example'), 'https://right.example')
+  assert.equal(resolveClickedLinkHref(editor.state, boundary, leftStart, null), 'https://left.example')
+  assert.equal(resolveClickedLinkHref(editor.state, boundary, boundary, null), 'https://right.example')
 })
 
 test('inserting a link at the caret keeps stored marks such as bold', t => {
@@ -440,4 +451,27 @@ test('remove uses the address from when the popover opened, not the address type
   })
   assert.equal(removeEditorLink(editor.state, editor.view.dispatch, openedLinkRange(opened)), true)
   assert.equal(linkAt(editor, 'docs').marks.includes('link'), false)
+})
+
+test('saving a link does not overwrite an address that changed after the popover opened', t => {
+  const editor = create([paragraph(text('docs', [{ type: 'link', attrs: { href: 'https://example.com/docs' } }]))])
+  t.after(() => editor.destroy())
+  const range = rangeOf(editor, 'docs')
+  const link = editor.schema.marks.link!
+  editor.view.dispatch(editor.state.tr.addMark(range.from, range.to, link.create({ href: 'https://other.example/docs' })))
+  const before = editor.getJSON()
+  const conflict = {
+    ...range, original: 'docs', originalHref: 'https://example.com/docs', text: 'docs', href: 'https://example.com/new',
+  }
+  assert.equal(applyEditorLink(editor.state, undefined, conflict), 'stale')
+  assert.equal(applyEditorLink(editor.state, editor.view.dispatch, conflict), 'stale')
+  assert.deepEqual(editor.getJSON(), before)
+  assert.equal(linkAt(editor, 'docs').href, 'https://other.example/docs')
+  assert.equal(linkApplyMessage('stale', 'zh'), '正文已变化，请重新打开链接。')
+  assert.equal(linkRemoveMessage('en'), 'The note changed. Open the link again.')
+  assert.equal(applyEditorLink(editor.state, editor.view.dispatch, {
+    ...range, original: 'docs', originalHref: 'https://other.example/docs', text: 'guide', href: 'https://example.com/new',
+  }), true)
+  assert.equal(editor.state.doc.textContent, 'guide')
+  assert.equal(linkAt(editor, 'guide').href, 'https://example.com/new')
 })

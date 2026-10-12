@@ -14,7 +14,7 @@ import { JotActionIcon, type JotActionIconName } from './icons.js'
 import { TableControls } from './TableControls.js'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../model.js'
 import { applySlashItem, filterSlashItems, slashLabel, slashMatch, type SlashItem, type SlashMatch } from './slash-menu.js'
-import { applyEditorLink, blockCredentialLinkEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkMarkHref, linkSelection, openedLinkRange, openLinkHref, openableLinkHref, removeEditorLink } from './link-commands.js'
+import { applyEditorLink, blockCredentialLinkEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkRemoveMessage, linkSelection, openedLinkRange, openLinkHref, openableLinkHref, removeEditorLink, resolveClickedLinkHref } from './link-commands.js'
 import { linkPopoverFocusKey, linkPopoverInitialFocus } from './LinkPopover.js'
 import { LinkPopover } from './LinkPopover.js'
 import { tidyCompletedTasks } from './list-commands.js'
@@ -48,23 +48,29 @@ interface LinkDraft {
   caret: { left: number; top: number; bottom: number }
 }
 
-/** 原生 click / auxclick 会导航。mouseup 上的 preventDefault 拦不住，所以这两处单独看文档标记。 */
+/** 原生 click / auxclick 会导航。mouseup 上的 preventDefault 拦不住，所以这两处按被点中的 `<a>` 再拦一次。 */
+function clickedAnchorHref(view: {
+  state: Parameters<typeof resolveClickedLinkHref>[0]
+  posAtDOM: (node: globalThis.Node, offset: number) => number
+}, anchor: Element, clickPos: number | null): string | null {
+  let anchorPos: number | null = null
+  try { anchorPos = view.posAtDOM(anchor, 0) } catch { anchorPos = null }
+  return resolveClickedLinkHref(view.state, clickPos, anchorPos, anchor.getAttribute('href') || null)
+}
+
 function blockCredentialNavigation(view: {
   dom: ParentNode
-  state: Parameters<typeof linkMarkHref>[0]
+  editable: boolean
+  state: Parameters<typeof resolveClickedLinkHref>[0]
   posAtCoords: (coords: { left: number; top: number }) => { pos: number } | null | undefined
   posAtDOM: (node: globalThis.Node, offset: number) => number
-}, event: { type: string; target: EventTarget | null; clientX: number; clientY: number; preventDefault(): void }): boolean {
+}, event: { type: string; target: EventTarget | null; clientX: number; clientY: number; metaKey?: boolean; ctrlKey?: boolean; preventDefault(): void }): boolean {
   const anchor = event.target instanceof Element ? event.target.closest('a') : null
   if (!anchor || !view.dom.contains(anchor)) return false
   const attachment = anchor.hasAttribute('data-jot-attachment-id') || anchor.getAttribute('data-type') === 'jot-attachment'
   const hit = view.posAtCoords({ left: event.clientX, top: event.clientY })
-  let pos = hit?.pos
-  if (pos == null) {
-    try { pos = view.posAtDOM(anchor, 0) } catch { pos = undefined }
-  }
-  const href = (pos == null ? null : linkMarkHref(view.state, pos)) || anchor.getAttribute('href')
-  return blockCredentialLinkEvent(event, href, attachment)
+  const href = clickedAnchorHref(view, anchor, hit?.pos ?? null)
+  return blockCredentialLinkEvent(event, href, attachment, view.editable)
 }
 
 export interface RichEditorActions {
@@ -188,7 +194,8 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
     const current = instance.current
     const draft = linkState.current
     if (!current || !draft || callbacks.current.readOnly) return
-    if (removeEditorLink(current.state, current.view.dispatch, openedLinkRange(draft))) { setLink(null); setLinkError(''); current.commands.focus() }
+    if (removeEditorLink(current.state, current.view.dispatch, openedLinkRange(draft))) { setLink(null); setLinkError(''); current.commands.focus(); return }
+    setLinkError(linkRemoveMessage(callbacks.current.locale))
   }
 
   useEffect(() => {
@@ -210,9 +217,9 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
           const anchor = target instanceof Element ? target.closest('a') : null
           const inside = Boolean(anchor && view.dom.contains(anchor))
           if (!inside || !anchor) return false
-          const domHref = anchor.getAttribute('href') || null
           // 账号口令地址渲染时不带 href。空字符串仍会打开当前页，所以属性是省略而不是写成空。
-          const href = linkMarkHref(view.state, pos) || domHref
+          // 两条链接相接时用被点中的那个 <a>，不能按文档位置一律取后面一条。
+          const href = clickedAnchorHref(view, anchor, pos)
           const action = linkClickAction({
             button: event.button, metaKey: event.metaKey, ctrlKey: event.ctrlKey, editable: view.editable,
             href, attachment: Boolean(anchor?.hasAttribute('data-jot-attachment-id') || anchor?.getAttribute('data-type') === 'jot-attachment'),
