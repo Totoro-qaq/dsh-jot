@@ -14,7 +14,7 @@ import { JotActionIcon, type JotActionIconName } from './icons.js'
 import { TableControls } from './TableControls.js'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../model.js'
 import { applySlashItem, filterSlashItems, slashLabel, slashMatch, type SlashItem, type SlashMatch } from './slash-menu.js'
-import { applyEditorLink, guardLinkDomEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkHrefSegments, linkRemoveMessage, linkSelection, openedLinkRange, openLinkHref, openableLinkHref, removeEditorLink, resolveClickedLinkHref } from './link-commands.js'
+import { applyEditorLink, linkApplyMessage, linkClickAction, linkHrefSegments, linkSelection, openLinkHref, openableLinkHref, removeEditorLink } from './link-commands.js'
 import { linkPopoverFocusKey, linkPopoverInitialFocus } from './LinkPopover.js'
 import { LinkPopover } from './LinkPopover.js'
 import { tidyCompletedTasks } from './list-commands.js'
@@ -40,7 +40,7 @@ interface LinkDraft {
   from: number
   to: number
   original: string
-  /** 浮层打开时文档里的地址。之后改输入框不能拿来和文档比对。 */
+  /** 浮层打开时文档里的地址，去掉链接时用来比对。 */
   originalHref: string | null
   /** 每一段当时的地址。混合选区不能只记一个收成 null 的值。 */
   originalSegments: ReturnType<typeof linkHrefSegments>
@@ -50,32 +50,21 @@ interface LinkDraft {
   caret: { left: number; top: number; bottom: number }
 }
 
-/** 原生 click / auxclick 会导航。mouseup 上的 preventDefault 拦不住，所以这两处按被点中的 `<a>` 再拦一次。 */
-function clickedAnchorHref(view: {
-  state: Parameters<typeof resolveClickedLinkHref>[0]
-  posAtDOM: (node: globalThis.Node, offset: number) => number
-}, anchor: Element, clickPos: number | null): string | null {
-  let anchorPos: number | null = null
-  try { anchorPos = view.posAtDOM(anchor, 0) } catch { anchorPos = null }
-  return resolveClickedLinkHref(view.state, clickPos, anchorPos, anchor.getAttribute('href') || null)
+/** 用被点中的 `<a>` 自己的 href；带账号口令的地址渲染时没有 href。附件卡片交给浏览器。 */
+function linkAction(view: { editable: boolean }, event: MouseEvent): { action: ReturnType<typeof linkClickAction>; href: string | null } {
+  const anchor = event.target instanceof Element ? event.target.closest('a') : null
+  if (!anchor || anchor.hasAttribute('data-jot-attachment-id')) return { action: 'ignore', href: null }
+  const href = anchor.getAttribute('href')
+  return { action: linkClickAction(event, href, view.editable), href }
 }
 
-function blockCredentialNavigation(view: {
-  dom: ParentNode
-  editable: boolean
-  state: Parameters<typeof resolveClickedLinkHref>[0]
-  posAtCoords: (coords: { left: number; top: number }) => { pos: number } | null | undefined
-  posAtDOM: (node: globalThis.Node, offset: number) => number
-}, event: { type: string; button?: number; detail?: number; target: EventTarget | null; clientX: number; clientY: number; metaKey?: boolean; ctrlKey?: boolean; preventDefault(): void }): boolean {
-  const anchor = event.target instanceof Element ? event.target.closest('a') : null
-  if (!anchor || !view.dom.contains(anchor)) return false
-  const attachment = anchor.hasAttribute('data-jot-attachment-id') || anchor.getAttribute('data-type') === 'jot-attachment'
-  const hit = view.posAtCoords({ left: event.clientX, top: event.clientY })
-  const href = clickedAnchorHref(view, anchor, hit?.pos ?? null)
-  const decision = guardLinkDomEvent(event, href, attachment, view.editable)
-  // 鼠标主键在 mouseup 里已经打开。键盘 Enter 和中键只在这次事件里打开。
-  if (decision.open) openLinkHref(href ?? '')
-  return decision.handled
+/** 只在 click（含键盘 Enter）和 auxclick 上打开，所以每次激活最多打开一次。 */
+function activateLink(view: { editable: boolean }, event: MouseEvent): boolean {
+  const { action, href } = linkAction(view, event)
+  if (action === 'ignore') return false
+  event.preventDefault()
+  if (action === 'open' && href) openLinkHref(href)
+  return true
 }
 
 export interface RichEditorActions {
@@ -200,8 +189,10 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
     const current = instance.current
     const draft = linkState.current
     if (!current || !draft || callbacks.current.readOnly) return
-    if (removeEditorLink(current.state, current.view.dispatch, openedLinkRange(draft))) { setLink(null); setLinkError(''); current.commands.focus(); return }
-    setLinkError(linkRemoveMessage(callbacks.current.locale))
+    // 只比对打开浮层那一刻的地址和原文；之后改过的输入框不算。
+    const opened = { from: draft.from, to: draft.to, original: draft.original, href: draft.originalHref }
+    if (removeEditorLink(current.state, current.view.dispatch, opened)) { setLink(null); setLinkError(''); current.commands.focus(); return }
+    setLinkError(linkApplyMessage('stale', callbacks.current.locale))
   }
 
   useEffect(() => {
@@ -213,25 +204,9 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       extensions: createJotExtensions({ resolveAttachmentUrl: id => callbacks.current.resolveAttachmentUrl?.(id) ?? managedAttachmentUrl(id),
         locale: () => callbacks.current.locale }),
       editorProps: {
-        handleDOMEvents: {
-          // mouseup 的 preventDefault 拦不住随后的 click 和中键 auxclick。
-          click: (view, event) => blockCredentialNavigation(view, event),
-          auxclick: (view, event) => blockCredentialNavigation(view, event),
-        },
-        handleClick: (view, pos, event) => {
-          const target = event.target
-          const anchor = target instanceof Element ? target.closest('a') : null
-          const inside = Boolean(anchor && view.dom.contains(anchor))
-          if (!inside || !anchor) return false
-          // 账号口令地址渲染时不带 href。空字符串仍会打开当前页，所以属性是省略而不是写成空。
-          // 两条链接相接时用被点中的那个 <a>，不能按文档位置一律取后面一条。
-          const href = clickedAnchorHref(view, anchor, pos)
-          const action = linkClickAction({
-            button: event.button, metaKey: event.metaKey, ctrlKey: event.ctrlKey, editable: view.editable,
-            href, attachment: Boolean(anchor?.hasAttribute('data-jot-attachment-id') || anchor?.getAttribute('data-type') === 'jot-attachment'),
-          })
-          return handleLinkClick(action, event, () => { openLinkHref(href ?? '') })
-        },
+        handleDOMEvents: { click: activateLink, auxclick: activateLink },
+        // 同一次激活的 mouseup 只认领、不打开：否则 ProseMirror 会按 Ctrl／Command 选中整段，Linux 的中键还会粘贴。
+        handleClick: (view, _pos, event) => linkAction(view, event).action !== 'ignore',
         handleKeyDown: (_view, event) => {
           const menu = slashState.current
           if (menu && !event.isComposing && event.keyCode !== 229 && !event.metaKey && !event.ctrlKey && !event.altKey) {

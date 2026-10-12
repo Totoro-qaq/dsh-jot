@@ -3,7 +3,6 @@ import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { TextSelection } from '@tiptap/pm/state'
 import { linkHrefHasCredentials, validateRichDoc } from '../model.js'
-import { isApplePlatform } from './editor-shortcuts.js'
 import type { JotLocale } from './types.js'
 
 type Dispatch = ((tr: Transaction) => void) | undefined
@@ -54,7 +53,7 @@ export function normalizeLinkHref(raw: string): string | null {
   return value
 }
 
-/** 可以在新窗口或外部应用里打开的地址。页内 # 锚点留给浏览器自己处理。 */
+/** 可以在新窗口或外部应用里打开的地址。# 锚点不算：笔记里没有可跳转的位置。 */
 export function openableLinkHref(raw: string): string | null {
   const href = normalizeLinkHref(raw)
   return href && /^(https?:\/\/|mailto:|tel:)/iu.test(href) ? href : null
@@ -230,8 +229,6 @@ export function linkApplyMessage(result: LinkApplyFailure, locale: JotLocale): s
  */
 export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   from: number; to: number; original: string; text: string; href: string
-  /** 打开浮层时文档里的地址。整段是同一条链接时使用；混合选区要改看 originalSegments。 */
-  originalHref?: string | null
   /** 打开浮层时每一段的地址。混合链接不能收成一个 null，否则并发改过的地址会被盖掉。 */
   originalSegments?: readonly LinkHrefSegment[]
 }): true | LinkApplyFailure {
@@ -240,10 +237,7 @@ export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   const { from, to } = input
   if (from < 0 || to < from || to > state.doc.content.size) return 'stale'
   if (state.doc.textBetween(from, to, '\n') !== input.original) return 'stale'
-  // 有分段记录时按段核对。只拿收成一个值的地址时，混合选区会变成 null，对不上并发修改。
-  if (input.originalSegments !== undefined) {
-    if (!sameHrefSegments(linkHrefSegments(state.doc, from, to), input.originalSegments)) return 'stale'
-  } else if (input.originalHref !== undefined && hrefInRange(state.doc, from, to) !== input.originalHref) return 'stale'
+  if (input.originalSegments && !sameHrefSegments(linkHrefSegments(state.doc, from, to), input.originalSegments)) return 'stale'
   const href = normalizeLinkHref(input.href)
   if (!href) return 'invalid-href'
   if (blocksLink(state.doc, from, to)) return 'unsupported'
@@ -314,15 +308,14 @@ export function removeEditorLink(state: EditorState, dispatch: Dispatch, range: 
   const link = state.schema.marks.link
   if (!link) return false
   let { from, to } = range
-  const size = state.doc.content.size
-  if (from < 0 || to < from || from > size || to > size) return false
+  if (from < 0 || to < from || to > state.doc.content.size) return false
   if (from === to) {
     const found = getMarkRange(state.doc.resolve(from), link)
     if (!found) return false
     from = found.from
     to = found.to
   }
-  if (from >= to || from < 0 || to > size || !state.doc.rangeHasMark(from, to, link)) return false
+  if (!state.doc.rangeHasMark(from, to, link)) return false
   if (range.href != null && hrefInRange(state.doc, from, to) !== range.href) return false
   if (range.original !== undefined && state.doc.textBetween(from, to, '\n') !== range.original) return false
   if (!dispatch) return true
@@ -332,127 +325,14 @@ export function removeEditorLink(state: EditorState, dispatch: Dispatch, range: 
   return true
 }
 
-export interface LinkClickProbe {
-  button: number
-  metaKey: boolean
-  ctrlKey: boolean
-  editable: boolean
-  href: string | null
-  attachment: boolean
-  /** 省略时按当前平台判断。macOS 上 Ctrl+单击是右键。 */
-  apple?: boolean
-}
-
-/** 两条链接相接时，点在左侧末尾取 before，点在右侧开头取 after。 */
-export type LinkEdge = 'before' | 'after'
-
 /**
- * 点击处文档里的链接地址。
- * 落在文字内部时就是这一段。落在边界上时按被点中的一侧取，不能一律取后面那条。
- * 渲染时若没有 href，仍以标记为准，避免浏览器把空地址当成当前页。
+ * 正文里一次 `click` 或 `auxclick` 落在链接上时怎么处理。键盘 Enter 也是 click，detail 为 0。
+ * 编辑时单击只落光标，交给浏览器。中键、只读时单击、按住 Command 或 Ctrl 单击由 Jot 打开，并取消原生导航。
+ * 右键的 auxclick 和 macOS 的 Ctrl+单击（浏览器不发 click）都不经过这里打开。
+ * 双击的第二下只取消、不再打开。# 锚点、没有 href 的 `<a>`（带账号口令的地址）也只取消。
  */
-export function linkMarkHref(state: EditorState, pos: number, edge: LinkEdge = 'after'): string | null {
-  const link = state.schema.marks.link
-  if (!link) return null
-  const $pos = state.doc.resolve(Math.max(0, Math.min(pos, state.doc.content.size)))
-  const hrefOf = (marks: readonly Mark[] | undefined) => {
-    const mark = marks ? link.isInSet(marks) : undefined
-    const href = mark ? String(mark.attrs.href ?? '') : ''
-    return href || null
-  }
-  const after = hrefOf($pos.nodeAfter?.marks)
-  const before = hrefOf($pos.nodeBefore?.marks)
-  const here = hrefOf($pos.marks())
-  if ($pos.textOffset > 0) return after ?? here ?? before
-  if (edge === 'before') return before ?? here ?? after
-  return after ?? here ?? before
-}
-
-/** 被点中的 `<a>` 起点在点击位置之前，说明点的是左侧链接的末尾。 */
-export function linkEdgeAtClick(clickPos: number, anchorPos: number): LinkEdge {
-  return anchorPos < clickPos ? 'before' : 'after'
-}
-
-/**
- * 优先用被点中的 `<a>` 自己的 href。属性被省略时（账号口令地址），按点击落在该元素的哪一侧读标记。
- */
-export function resolveClickedLinkHref(state: EditorState, clickPos: number | null, anchorPos: number | null, domHref: string | null): string | null {
-  if (domHref) return domHref
-  const pos = clickPos ?? anchorPos
-  if (pos == null) return null
-  const edge = anchorPos == null || clickPos == null ? 'after' : linkEdgeAtClick(clickPos, anchorPos)
-  return linkMarkHref(state, pos, edge)
-}
-
-/**
- * 编辑时单击只落光标。中键、只读和按住主修饰键由我们打开一次。
- * 带账号口令的地址一律拦截。右键、macOS 上的 Ctrl+单击和附件卡片仍交给浏览器。
- */
-export function linkClickAction(input: LinkClickProbe): 'ignore' | 'open' | 'place-caret' | 'block' {
-  if (input.attachment || !input.href) return 'ignore'
-  if (linkHrefHasCredentials(input.href)) return 'block'
-  // 中键也要我们来开，不能让浏览器再开一份。打不开的地址只取消原生导航。
-  if (input.button === 1) return openableLinkHref(input.href) ? 'open' : 'block'
-  if (input.button !== 0) return 'ignore'
-  // macOS 的 Ctrl+单击会弹出上下文菜单，浏览器不发 click，但 mouseup 照样到这里。
-  if (input.ctrlKey && (input.apple ?? isApplePlatform())) return 'ignore'
-  if (!input.editable || input.metaKey || input.ctrlKey) return openableLinkHref(input.href) ? 'open' : 'ignore'
-  return 'place-caret'
-}
-
-/**
- * mouseup 上的 handleClick。忽略时交给浏览器。拦截、打开或落光标都要 preventDefault。
- * 中键的打开留在随后的 auxclick：这里再开一次就会打开两份。
- */
-export function handleLinkClick(action: 'ignore' | 'open' | 'place-caret' | 'block', event: { button?: number; preventDefault(): void }, open: () => void): boolean {
-  if (action === 'ignore') return false
-  if (action === 'open' && event.button !== 1) open()
-  event.preventDefault()
-  return true
-}
-
-export interface LinkDomEvent {
-  type: string
-  button?: number
-  detail?: number
-  metaKey?: boolean
-  ctrlKey?: boolean
-  preventDefault(): void
-}
-
-/**
- * 原生 `click` 和中键 `auxclick` 会跟着 href 导航，mouseup 上的 preventDefault 拦不住。
- * 我们自己会打开或拦截时都要取消。鼠标主键已经在 mouseup 里打开过；
- * 中键的 mouseup 只取消默认，打开留在这次 auxclick。键盘激活的 click（detail 为 0）也在这里打开。都只开一次。
- * 右键同样会发 auxclick，按 `button` 区分；没带 `button` 的 auxclick 不当作中键。
- */
-export function guardLinkDomEvent(event: LinkDomEvent, href: string | null, attachment: boolean, editable = true, apple?: boolean): { handled: boolean; open: boolean } {
-  if (attachment || (event.type !== 'click' && event.type !== 'auxclick') || !href) return { handled: false, open: false }
-  const button = typeof event.button === 'number' ? event.button : event.type === 'click' ? 0 : -1
-  const action = linkClickAction({
-    button, metaKey: Boolean(event.metaKey), ctrlKey: Boolean(event.ctrlKey), editable, href, attachment: false, apple,
-  })
-  if (action !== 'open' && action !== 'block') return { handled: false, open: false }
-  event.preventDefault()
-  const open = action === 'open' && (event.type === 'auxclick' ? button === 1 : event.detail === 0)
-  return { handled: true, open }
-}
-
-export function blockCredentialLinkEvent(event: LinkDomEvent, href: string | null, attachment: boolean, editable = true, apple?: boolean): boolean {
-  return guardLinkDomEvent(event, href, attachment, editable, apple).handled
-}
-
-/** 浮层里删除没有生效时的说明。正文或地址已经对不上，请用户重新打开。 */
-export function linkRemoveMessage(locale: JotLocale): string {
-  return linkApplyMessage('stale', locale)
-}
-
-/** 删除时只用浮层打开那一刻的地址和原文。之后改过的输入不能拿来比对，否则删除会静默失败。 */
-export function openedLinkRange(draft: {
-  from: number
-  to: number
-  original: string
-  originalHref: string | null
-}): { from: number; to: number; original: string; href: string | null } {
-  return { from: draft.from, to: draft.to, original: draft.original, href: draft.originalHref }
+export function linkClickAction(event: { button: number; detail: number; metaKey: boolean; ctrlKey: boolean }, href: string | null, editable: boolean): 'ignore' | 'open' | 'block' {
+  const activates = event.button === 1 || (event.button === 0 && (!editable || event.metaKey || event.ctrlKey))
+  if (!activates) return 'ignore'
+  return href && openableLinkHref(href) && event.detail <= 1 ? 'open' : 'block'
 }

@@ -6,7 +6,7 @@ import { Fragment, Slice } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
 import { createJotExtensions } from '../src/client/editor-extensions.js'
 import { linkPopoverFocusKey, linkPopoverInitialFocus } from '../src/client/LinkPopover.js'
-import { applyEditorLink, blockCredentialLinkEvent, guardLinkDomEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkEdgeAtClick, linkHrefSegments, linkMarkHref, linkRemoveMessage, linkSelection, normalizeLinkHref, openedLinkRange, openableLinkHref, openLinkHref, removeEditorLink, resolveClickedLinkHref } from '../src/client/link-commands.js'
+import { applyEditorLink, linkApplyMessage, linkClickAction, linkHrefSegments, linkSelection, normalizeLinkHref, openableLinkHref, openLinkHref, removeEditorLink } from '../src/client/link-commands.js'
 import { MAX_TEXT_LENGTH, validateRichDoc } from '../src/model.js'
 
 const text = (value: string, marks?: JSONContent['marks']) => ({ type: 'text', text: value, ...(marks ? { marks } : {}) })
@@ -210,16 +210,26 @@ test('typing several characters in a new link does not retarget focus', () => {
   assert.notEqual(linkPopoverFocusKey({ ...open, readOnly: true }), first)
 })
 
-test('a plain click in an editable note only places the caret; read-only and modified clicks open', () => {
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href: 'https://example.com', attachment: false }), 'place-caret')
-  assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: false, editable: true, href: 'example.com', attachment: false }), 'open')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable: true, href: 'mailto:a@b.example', attachment: false, apple: false }), 'open')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'tel:1', attachment: false }), 'open')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: '#section', attachment: false }), 'ignore')
-  assert.equal(linkClickAction({ button: 1, metaKey: false, ctrlKey: false, editable: true, href: 'https://example.com', attachment: false }), 'open')
-  assert.equal(linkClickAction({ button: 1, metaKey: false, ctrlKey: false, editable: false, href: '#section', attachment: false }), 'block')
-  assert.equal(linkClickAction({ button: 2, metaKey: false, ctrlKey: false, editable: false, href: 'https://example.com', attachment: false }), 'ignore')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'https://example.com', attachment: true }), 'ignore')
+test('one rule handles click, Enter, middle-click and right-click, and opens each activation at most once', () => {
+  const event = (patch: Partial<Parameters<typeof linkClickAction>[0]> = {}) => ({ button: 0, detail: 1, metaKey: false, ctrlKey: false, ...patch })
+  const web = 'https://example.com'
+  const cases: Array<[string, ReturnType<typeof event>, string | null, boolean, ReturnType<typeof linkClickAction>]> = [
+    ['an editable click only places the caret', event(), web, true, 'ignore'],
+    ['Command-click', event({ metaKey: true }), web, true, 'open'],
+    ['Ctrl-click', event({ ctrlKey: true }), 'mailto:a@b.example', true, 'open'],
+    ['a read-only click', event(), 'tel:1', false, 'open'],
+    ['Enter on a focused read-only link', event({ detail: 0 }), web, false, 'open'],
+    ['a middle-click while editing', event({ button: 1 }), web, true, 'open'],
+    ['the second click of a double-click', event({ detail: 2 }), web, false, 'block'],
+    ['a right-click', event({ button: 2 }), web, false, 'ignore'],
+    ['a right-click with Command held', event({ button: 2, metaKey: true }), web, true, 'ignore'],
+    ['a # anchor in a read-only note', event(), '#section', false, 'block'],
+    ['a middle-click on a # anchor', event({ button: 1 }), '#section', true, 'block'],
+    ['a middle-click on a credential address', event({ button: 1 }), 'https://user:pass@example.com/a', true, 'block'],
+    ['a middle-click on an anchor rendered without href', event({ button: 1 }), null, true, 'block'],
+    ['an editable click on an anchor without href', event(), null, true, 'ignore'],
+  ]
+  for (const [name, input, href, editable, expected] of cases) assert.equal(linkClickAction(input, href, editable), expected, name)
   const opened: unknown[][] = []
   const previous = globalThis.open
   globalThis.open = ((...args: unknown[]) => { opened.push(args); return null }) as typeof globalThis.open
@@ -232,14 +242,6 @@ test('a plain click in an editable note only places the caret; read-only and mod
   } finally {
     globalThis.open = previous
   }
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'https://user:pass@example.com', attachment: false }), 'block')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href: 'https://user:pass@example.com', attachment: false }), 'block')
-  assert.equal(linkClickAction({ button: 2, metaKey: true, ctrlKey: false, editable: false, href: 'https://user@example.com/a', attachment: false }), 'block')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href: 'https://user:pass@example.com', attachment: true }), 'ignore')
-  let prevented = 0
-  assert.equal(handleLinkClick('block', { preventDefault() { prevented++ } }, () => { throw new Error('blocked links are not opened') }), true)
-  assert.equal(handleLinkClick('ignore', { preventDefault() { prevented++ } }, () => {}), false)
-  assert.equal(prevented, 1)
 })
 
 test('editing link text keeps spaces and inline code', t => {
@@ -333,16 +335,6 @@ test('typing or pasting a credential address does not create a link', t => {
   assert.equal(paste(allowed), true)
   assert.equal(pasted.state.doc.textContent, 'replace-me')
   assert.equal(linkAt(pasted, 'replace-me').href, 'https://example.com/docs')
-  const stored = create([paragraph(text('secret', [{ type: 'link', attrs: { href: 'https://user:pass@example.com/a' } }]))])
-  t.after(() => stored.destroy())
-  let pos = -1
-  stored.state.doc.descendants((node, position) => {
-    if (pos < 0 && node.isText && node.text === 'secret') pos = position + 1
-  })
-  const href = linkMarkHref(stored.state, pos)
-  assert.equal(href, 'https://user:pass@example.com/a')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: false, href, attachment: false }), 'block')
-  assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: false, editable: true, href, attachment: false }), 'block')
 })
 
 function linkDomAttrs(editor: Editor, href: string): Record<string, unknown> {
@@ -355,112 +347,11 @@ function linkDomAttrs(editor: Editor, href: string): Record<string, unknown> {
   return attrs as Record<string, unknown>
 }
 
-test('a credential link is rendered without an href, and click and middle-click are cancelled', t => {
+test('a stored credential link is rendered without an href, so the browser has nothing to navigate to', t => {
   const editor = create([paragraph(text('secret', [{ type: 'link', attrs: { href: 'https://user:pass@example.com/a' } }]))])
   t.after(() => editor.destroy())
-  const blocked = linkDomAttrs(editor, 'https://user:pass@example.com/a')
-  assert.equal(Object.hasOwn(blocked, 'href'), false)
+  assert.equal(Object.hasOwn(linkDomAttrs(editor, 'https://user:pass@example.com/a'), 'href'), false)
   assert.equal(linkDomAttrs(editor, 'https://example.com/docs').href, 'https://example.com/docs')
-  let prevented = 0
-  const prevent = () => { prevented++ }
-  assert.equal(blockCredentialLinkEvent({ type: 'click', preventDefault: prevent }, 'https://user:pass@example.com/a', false), true)
-  assert.equal(blockCredentialLinkEvent({ type: 'auxclick', preventDefault: prevent }, 'https://user@example.com/a', false), true)
-  assert.equal(prevented, 2)
-  assert.equal(blockCredentialLinkEvent({ type: 'click', preventDefault: prevent }, 'https://example.com', false), false)
-  assert.equal(blockCredentialLinkEvent({ type: 'auxclick', button: 1, preventDefault: prevent }, 'https://example.com', false), true)
-  assert.equal(blockCredentialLinkEvent({ type: 'click', preventDefault: prevent }, 'https://example.com', false, false), true)
-  assert.equal(blockCredentialLinkEvent({ type: 'click', ctrlKey: true, preventDefault: prevent }, 'https://example.com', false, true, false), true)
-  assert.equal(blockCredentialLinkEvent({ type: 'mousedown', preventDefault: prevent }, 'https://user:pass@example.com/a', false), false)
-  assert.equal(blockCredentialLinkEvent({ type: 'auxclick', preventDefault: prevent }, 'https://user:pass@example.com/a', true), false)
-  assert.equal(prevented, 5)
-  const keyboard = { type: 'click', detail: 0, preventDefault: prevent }
-  assert.deepEqual(guardLinkDomEvent(keyboard, 'https://example.com', false, false), { handled: true, open: true })
-  const mouse = { type: 'click', detail: 1, preventDefault: prevent }
-  assert.deepEqual(guardLinkDomEvent(mouse, 'https://example.com', false, false), { handled: true, open: false })
-  const middle = { type: 'auxclick', button: 1, detail: 1, preventDefault: prevent }
-  assert.deepEqual(guardLinkDomEvent(middle, 'https://example.com', false, true), { handled: true, open: true })
-  assert.deepEqual(guardLinkDomEvent(middle, 'https://user:pass@example.com/a', false, true), { handled: true, open: false })
-})
-
-test('middle-click opens on auxclick once, and a primary click or Enter does not open twice', () => {
-  let opened = 0
-  const open = () => { opened++ }
-  assert.equal(handleLinkClick('open', { button: 1, preventDefault() {} }, open), true)
-  const aux = guardLinkDomEvent({ type: 'auxclick', button: 1, detail: 1, preventDefault() {} }, 'https://example.com', false, true)
-  if (aux.open) open()
-  assert.deepEqual(aux, { handled: true, open: true })
-  assert.equal(opened, 1)
-  opened = 0
-  assert.equal(handleLinkClick('open', { button: 0, preventDefault() {} }, open), true)
-  const modified = guardLinkDomEvent({ type: 'click', detail: 1, ctrlKey: true, preventDefault() {} }, 'https://example.com', false, true, false)
-  if (modified.open) open()
-  assert.deepEqual(modified, { handled: true, open: false })
-  assert.equal(opened, 1)
-  opened = 0
-  assert.equal(handleLinkClick('open', { button: 0, preventDefault() {} }, open), true)
-  const readOnlyClick = guardLinkDomEvent({ type: 'click', detail: 1, preventDefault() {} }, 'https://example.com', false, false)
-  if (readOnlyClick.open) open()
-  assert.equal(opened, 1)
-  opened = 0
-  const keyboard = guardLinkDomEvent({ type: 'click', detail: 0, preventDefault() {} }, 'https://example.com', false, false)
-  if (keyboard.open) open()
-  assert.deepEqual(keyboard, { handled: true, open: true })
-  assert.equal(opened, 1)
-  assert.equal(handleLinkClick('place-caret', { button: 0, preventDefault() {} }, open), true)
-  assert.equal(opened, 1)
-})
-
-test('a right-click or a macOS Ctrl-click leaves the link to the context menu', () => {
-  let prevented = 0
-  const prevent = () => { prevented++ }
-  for (const editable of [true, false]) {
-    const right = guardLinkDomEvent({ type: 'auxclick', button: 2, detail: 1, preventDefault: prevent }, 'https://example.com', false, editable)
-    assert.deepEqual(right, { handled: false, open: false })
-    assert.equal(linkClickAction({ button: 2, metaKey: false, ctrlKey: false, editable, href: 'https://example.com', attachment: false }), 'ignore')
-  }
-  assert.equal(prevented, 0)
-  assert.deepEqual(guardLinkDomEvent({ type: 'auxclick', detail: 1, preventDefault: prevent }, 'https://example.com', false, false), { handled: false, open: false })
-  assert.equal(prevented, 0)
-  assert.deepEqual(guardLinkDomEvent({ type: 'auxclick', button: 1, detail: 1, preventDefault: prevent }, 'https://example.com', false, false), { handled: true, open: true })
-  assert.equal(prevented, 1)
-  assert.deepEqual(guardLinkDomEvent({ type: 'auxclick', button: 2, detail: 1, preventDefault: prevent }, 'https://user:pass@example.com/a', false, true), { handled: true, open: false })
-  assert.equal(prevented, 2)
-  for (const editable of [true, false]) {
-    assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable, href: 'https://example.com', attachment: false, apple: true }), 'ignore')
-    assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: true, editable, href: 'https://example.com', attachment: false, apple: true }), 'ignore')
-    assert.equal(linkClickAction({ button: 0, metaKey: true, ctrlKey: false, editable, href: 'https://example.com', attachment: false, apple: true }), 'open')
-    assert.equal(linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable, href: 'https://example.com', attachment: false, apple: false }), 'open')
-  }
-  let opened = 0
-  const mouseUp = linkClickAction({ button: 0, metaKey: false, ctrlKey: true, editable: false, href: 'https://example.com', attachment: false, apple: true })
-  assert.equal(handleLinkClick(mouseUp, { button: 0, preventDefault: prevent }, () => { opened++ }), false)
-  assert.equal(opened, 0)
-  assert.equal(prevented, 2)
-})
-
-test('a click on either side of two adjacent links uses the link that was clicked', t => {
-  const editor = create([paragraph(
-    text('left', [{ type: 'link', attrs: { href: 'https://left.example' } }]),
-    text('right', [{ type: 'link', attrs: { href: 'https://right.example' } }]),
-  )])
-  t.after(() => editor.destroy())
-  let leftStart = -1
-  let boundary = -1
-  editor.state.doc.descendants((node, position) => {
-    if (leftStart < 0 && node.isText && node.text === 'left') leftStart = position
-    if (boundary < 0 && node.isText && node.text === 'right') boundary = position
-  })
-  assert.ok(boundary > leftStart)
-  assert.equal(linkEdgeAtClick(boundary, leftStart), 'before')
-  assert.equal(linkEdgeAtClick(boundary, boundary), 'after')
-  assert.equal(linkMarkHref(editor.state, boundary, 'before'), 'https://left.example')
-  assert.equal(linkMarkHref(editor.state, boundary, 'after'), 'https://right.example')
-  assert.equal(linkMarkHref(editor.state, boundary + 1), 'https://right.example')
-  assert.equal(linkMarkHref(editor.state, boundary - 1), 'https://left.example')
-  assert.equal(resolveClickedLinkHref(editor.state, boundary, leftStart, 'https://left.example'), 'https://left.example')
-  assert.equal(resolveClickedLinkHref(editor.state, boundary, boundary, 'https://right.example'), 'https://right.example')
-  assert.equal(resolveClickedLinkHref(editor.state, boundary, leftStart, null), 'https://left.example')
-  assert.equal(resolveClickedLinkHref(editor.state, boundary, boundary, null), 'https://right.example')
 })
 
 test('inserting a link at the caret keeps stored marks such as bold', t => {
@@ -506,15 +397,9 @@ test('remove uses the address from when the popover opened, not the address type
   const editor = create([paragraph(text('docs', [{ type: 'link', attrs: { href: 'https://example.com/docs' } }]))])
   t.after(() => editor.destroy())
   const range = rangeOf(editor, 'docs')
-  const opened = { from: range.from, to: range.to, original: 'docs', originalHref: 'https://example.com/docs' as string | null }
-  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, {
-    from: opened.from, to: opened.to, original: opened.original, href: 'https://edited.example',
-  }), false)
+  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, { ...range, original: 'docs', href: 'https://edited.example' }), false)
   assert.equal(linkAt(editor, 'docs').href, 'https://example.com/docs')
-  assert.deepEqual(openedLinkRange({ ...opened, originalHref: opened.originalHref }), {
-    from: range.from, to: range.to, original: 'docs', href: 'https://example.com/docs',
-  })
-  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, openedLinkRange(opened)), true)
+  assert.equal(removeEditorLink(editor.state, editor.view.dispatch, { ...range, original: 'docs', href: 'https://example.com/docs' }), true)
   assert.equal(linkAt(editor, 'docs').marks.includes('link'), false)
 })
 
@@ -526,16 +411,15 @@ test('saving a link does not overwrite an address that changed after the popover
   editor.view.dispatch(editor.state.tr.addMark(range.from, range.to, link.create({ href: 'https://other.example/docs' })))
   const before = editor.getJSON()
   const conflict = {
-    ...range, original: 'docs', originalHref: 'https://example.com/docs', text: 'docs', href: 'https://example.com/new',
+    ...range, original: 'docs', originalSegments: [{ text: 'docs', href: 'https://example.com/docs' }], text: 'docs', href: 'https://example.com/new',
   }
   assert.equal(applyEditorLink(editor.state, undefined, conflict), 'stale')
   assert.equal(applyEditorLink(editor.state, editor.view.dispatch, conflict), 'stale')
   assert.deepEqual(editor.getJSON(), before)
   assert.equal(linkAt(editor, 'docs').href, 'https://other.example/docs')
   assert.equal(linkApplyMessage('stale', 'zh'), '正文已变化，请重新打开链接。')
-  assert.equal(linkRemoveMessage('en'), 'The note changed. Open the link again.')
   assert.equal(applyEditorLink(editor.state, editor.view.dispatch, {
-    ...range, original: 'docs', originalHref: 'https://other.example/docs', text: 'guide', href: 'https://example.com/new',
+    ...conflict, originalSegments: linkHrefSegments(editor.state.doc, range.from, range.to), text: 'guide',
   }), true)
   assert.equal(editor.state.doc.textContent, 'guide')
   assert.equal(linkAt(editor, 'guide').href, 'https://example.com/new')
@@ -568,7 +452,7 @@ test('a selection that mixes links keeps each address and does not overwrite a l
   const two = rangeOf(editor, 'two')
   editor.view.dispatch(editor.state.tr.addMark(two.from, two.to, editor.schema.marks.link!.create({ href: 'https://changed.example' })))
   const before = editor.getJSON()
-  const input = { from, to, original, originalHref: null, originalSegments: segments, text: original, href: 'https://example.com/all' }
+  const input = { from, to, original, originalSegments: segments, text: original, href: 'https://example.com/all' }
   assert.equal(applyEditorLink(editor.state, undefined, input), 'stale')
   assert.equal(applyEditorLink(editor.state, editor.view.dispatch, input), 'stale')
   assert.deepEqual(editor.getJSON(), before)
