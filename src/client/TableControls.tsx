@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { ActionMenu, type ActionMenuItem } from './ActionMenu.js'
 import { JotActionIcon } from './icons.js'
-import { columnDividerDelta, columnWidthChange, explicitColumnWidth, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget, type WidthAnnouncementClock } from './table-actions.js'
+import { abandonWidthAnnouncement, columnDividerDelta, columnWidthChange, explicitColumnWidth, flushWidthAnnouncement, nudgeTableColumn, planWidthAnnouncement, selectedTable, TABLE_CELL_MAX_WIDTH, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE, tableActionAllowed, tableActionTransaction, type ColumnWidthSample, type TableAction, type TableTarget, type WidthAnnouncementClock } from './table-actions.js'
 
 interface ChromeGeometry {
   column: number; row: number; bottom: number; middle: number
@@ -40,7 +40,12 @@ export function TableControls({ editor, readOnly, en }: { editor: Editor; readOn
     : null
   const widthText = (width: number) => en ? `Column ${target?.right ?? ''} width ${width} pixels` : `第 ${target?.right ?? ''} 列宽度 ${width} 像素`
   useEffect(() => {
-    if (!widthSample) return
+    if (!widthSample) {
+      if (announceTimer.current) clearTimeout(announceTimer.current)
+      announceTimer.current = null
+      announceClock.current = abandonWidthAnnouncement(announceClock.current)
+      return
+    }
     const next = columnWidthChange(seenWidth.current, widthSample)
     const switched = Boolean(seenWidth.current && seenWidth.current.key !== widthSample.key)
     seenWidth.current = widthSample

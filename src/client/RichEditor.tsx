@@ -14,7 +14,7 @@ import { JotActionIcon, type JotActionIconName } from './icons.js'
 import { TableControls } from './TableControls.js'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../model.js'
 import { applySlashItem, filterSlashItems, slashLabel, slashMatch, type SlashItem, type SlashMatch } from './slash-menu.js'
-import { applyEditorLink, blockCredentialLinkEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkRemoveMessage, linkSelection, openedLinkRange, openLinkHref, openableLinkHref, removeEditorLink, resolveClickedLinkHref } from './link-commands.js'
+import { applyEditorLink, guardLinkDomEvent, handleLinkClick, linkApplyMessage, linkClickAction, linkHrefSegments, linkRemoveMessage, linkSelection, openedLinkRange, openLinkHref, openableLinkHref, removeEditorLink, resolveClickedLinkHref } from './link-commands.js'
 import { linkPopoverFocusKey, linkPopoverInitialFocus } from './LinkPopover.js'
 import { LinkPopover } from './LinkPopover.js'
 import { tidyCompletedTasks } from './list-commands.js'
@@ -42,6 +42,8 @@ interface LinkDraft {
   original: string
   /** 浮层打开时文档里的地址。之后改输入框不能拿来和文档比对。 */
   originalHref: string | null
+  /** 每一段当时的地址。混合选区不能只记一个收成 null 的值。 */
+  originalSegments: ReturnType<typeof linkHrefSegments>
   text: string
   href: string
   existing: boolean
@@ -64,13 +66,16 @@ function blockCredentialNavigation(view: {
   state: Parameters<typeof resolveClickedLinkHref>[0]
   posAtCoords: (coords: { left: number; top: number }) => { pos: number } | null | undefined
   posAtDOM: (node: globalThis.Node, offset: number) => number
-}, event: { type: string; target: EventTarget | null; clientX: number; clientY: number; metaKey?: boolean; ctrlKey?: boolean; preventDefault(): void }): boolean {
+}, event: { type: string; detail?: number; target: EventTarget | null; clientX: number; clientY: number; metaKey?: boolean; ctrlKey?: boolean; preventDefault(): void }): boolean {
   const anchor = event.target instanceof Element ? event.target.closest('a') : null
   if (!anchor || !view.dom.contains(anchor)) return false
   const attachment = anchor.hasAttribute('data-jot-attachment-id') || anchor.getAttribute('data-type') === 'jot-attachment'
   const hit = view.posAtCoords({ left: event.clientX, top: event.clientY })
   const href = clickedAnchorHref(view, anchor, hit?.pos ?? null)
-  return blockCredentialLinkEvent(event, href, attachment, view.editable)
+  const decision = guardLinkDomEvent(event, href, attachment, view.editable)
+  // 鼠标主键在 mouseup 里已经打开。键盘 Enter 和中键只在这次事件里打开。
+  if (decision.open) openLinkHref(href ?? '')
+  return decision.handled
 }
 
 export interface RichEditorActions {
@@ -175,6 +180,7 @@ export function RichEditor({ value, onChange, onBlur, readOnly = false, locale =
       id: ++linkSession.current, from: selection.from, to: selection.to,
       original: current.state.doc.textBetween(selection.from, selection.to, '\n'),
       originalHref: selection.href,
+      originalSegments: linkHrefSegments(current.state.doc, selection.from, selection.to),
       text: selection.text, href: selection.href ?? '', existing: Boolean(selection.href),
       caret: { left: coords.left, top: coords.top, bottom: coords.bottom },
     })

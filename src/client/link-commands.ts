@@ -67,17 +67,33 @@ export function openLinkHref(raw: string): boolean {
 }
 
 function hrefInRange(doc: ProseMirrorNode, from: number, to: number): string | null {
+  const runs = linkHrefSegments(doc, from, to)
+  if (runs.length !== 1) return null
+  return runs[0]?.href ?? null
+}
+
+/** 选区里每一段连续文字当时的地址。没有链接的文字 href 为 null。相邻且地址相同的会并成一段。 */
+export interface LinkHrefSegment { text: string; href: string | null }
+
+export function linkHrefSegments(doc: ProseMirrorNode, from: number, to: number): LinkHrefSegment[] {
   const link = doc.type.schema.marks.link
-  if (!link || from === to) return null
-  let href: string | null | undefined
-  doc.nodesBetween(from, to, node => {
-    if (!node.isText) return
+  if (!link || from >= to) return []
+  const segments: LinkHrefSegment[] = []
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText || !node.text) return
+    const text = node.text.slice(Math.max(0, from - pos), Math.min(node.text.length, to - pos))
+    if (!text) return
     const mark = link.isInSet(node.marks)
-    const value = mark ? String(mark.attrs.href ?? '') : null
-    if (href === undefined) href = value
-    else if (href !== value) href = null
+    const href = mark && mark.attrs.href ? String(mark.attrs.href) : null
+    const last = segments.at(-1)
+    if (last && last.href === href) last.text += text
+    else segments.push({ text, href })
   })
-  return href || null
+  return segments
+}
+
+function sameHrefSegments(left: readonly LinkHrefSegment[], right: readonly LinkHrefSegment[]): boolean {
+  return left.length === right.length && left.every((segment, index) => segment.text === right[index]?.text && segment.href === right[index]?.href)
 }
 
 /** 光标在链接内时取整段链接；否则用当前选区，方便给选中的文字加链接。 */
@@ -213,16 +229,20 @@ export function linkApplyMessage(result: LinkApplyFailure, locale: JotLocale): s
  */
 export function applyEditorLink(state: EditorState, dispatch: Dispatch, input: {
   from: number; to: number; original: string; text: string; href: string
-  /** 打开浮层时文档里的地址。传入后，保存前必须仍然一致。 */
+  /** 打开浮层时文档里的地址。整段是同一条链接时使用；混合选区要改看 originalSegments。 */
   originalHref?: string | null
+  /** 打开浮层时每一段的地址。混合链接不能收成一个 null，否则并发改过的地址会被盖掉。 */
+  originalSegments?: readonly LinkHrefSegment[]
 }): true | LinkApplyFailure {
   const link = state.schema.marks.link
   if (!link) return 'unsupported'
   const { from, to } = input
   if (from < 0 || to < from || to > state.doc.content.size) return 'stale'
   if (state.doc.textBetween(from, to, '\n') !== input.original) return 'stale'
-  // 浮层打开后地址若已被改掉，不能用旧草稿盖掉。没有这条链接时 originalHref 为 null。
-  if (input.originalHref !== undefined && hrefInRange(state.doc, from, to) !== input.originalHref) return 'stale'
+  // 有分段记录时按段核对。只拿收成一个值的地址时，混合选区会变成 null，对不上并发修改。
+  if (input.originalSegments !== undefined) {
+    if (!sameHrefSegments(linkHrefSegments(state.doc, from, to), input.originalSegments)) return 'stale'
+  } else if (input.originalHref !== undefined && hrefInRange(state.doc, from, to) !== input.originalHref) return 'stale'
   const href = normalizeLinkHref(input.href)
   if (!href) return 'invalid-href'
   if (blocksLink(state.doc, from, to)) return 'unsupported'
@@ -361,44 +381,62 @@ export function resolveClickedLinkHref(state: EditorState, clickPos: number | nu
   return linkMarkHref(state, pos, edge)
 }
 
-/** 编辑时单击只落光标；只读或按住主修饰键才打开。带账号口令的地址一律拦截，附件卡片仍走原来的预览。 */
+/**
+ * 编辑时单击只落光标。中键、只读和按住主修饰键由我们打开一次。
+ * 带账号口令的地址一律拦截。右键和附件卡片仍交给浏览器。
+ */
 export function linkClickAction(input: LinkClickProbe): 'ignore' | 'open' | 'place-caret' | 'block' {
   if (input.attachment || !input.href) return 'ignore'
-  // 只读、辅助按钮和修饰键点击也要拦住，否则浏览器会跟着 href 导航。
   if (linkHrefHasCredentials(input.href)) return 'block'
+  // 中键也要我们来开，不能让浏览器再开一份。打不开的地址只取消原生导航。
+  if (input.button === 1) return openableLinkHref(input.href) ? 'open' : 'block'
   if (input.button !== 0) return 'ignore'
   if (!input.editable || input.metaKey || input.ctrlKey) return openableLinkHref(input.href) ? 'open' : 'ignore'
   return 'place-caret'
 }
 
-/** 忽略时交给浏览器。拦截、打开或落光标都要 preventDefault，只读笔记也一样。 */
-export function handleLinkClick(action: 'ignore' | 'open' | 'place-caret' | 'block', event: { preventDefault(): void }, open: () => void): boolean {
+/**
+ * mouseup 上的 handleClick。忽略时交给浏览器。拦截、打开或落光标都要 preventDefault。
+ * 中键的打开留在随后的 auxclick：这里再开一次就会打开两份。
+ */
+export function handleLinkClick(action: 'ignore' | 'open' | 'place-caret' | 'block', event: { button?: number; preventDefault(): void }, open: () => void): boolean {
   if (action === 'ignore') return false
-  if (action === 'open') open()
+  if (action === 'open' && event.button !== 1) open()
   event.preventDefault()
   return true
 }
 
 /**
  * 原生 `click` 和中键 `auxclick` 会跟着 href 导航，mouseup 上的 preventDefault 拦不住。
- * 我们自己会打开或拦截时都要取消，包括只读笔记里的普通链接：否则 `window.open` 之后，
- * `<a target="_blank">` 还会再开一次。附件卡片和我们不处理的点击仍交给浏览器。
+ * 我们自己会打开或拦截时都要取消。鼠标主键已经在 mouseup 里打开过；
+ * 中键的 mouseup 只取消默认，打开留在这次 auxclick。键盘激活的 click（detail 为 0）也在这里打开。都只开一次。
  */
-export function blockCredentialLinkEvent(event: {
+export function guardLinkDomEvent(event: {
   type: string
+  detail?: number
   metaKey?: boolean
   ctrlKey?: boolean
   preventDefault(): void
-}, href: string | null, attachment: boolean, editable = true): boolean {
-  if (attachment || (event.type !== 'click' && event.type !== 'auxclick')) return false
-  if (!href) return false
+}, href: string | null, attachment: boolean, editable = true): { handled: boolean; open: boolean } {
+  if (attachment || (event.type !== 'click' && event.type !== 'auxclick') || !href) return { handled: false, open: false }
   const action = linkClickAction({
     button: event.type === 'auxclick' ? 1 : 0,
     metaKey: Boolean(event.metaKey), ctrlKey: Boolean(event.ctrlKey), editable, href, attachment: false,
   })
-  if (action !== 'open' && action !== 'block') return false
+  if (action !== 'open' && action !== 'block') return { handled: false, open: false }
   event.preventDefault()
-  return true
+  const open = action === 'open' && (event.type === 'auxclick' || event.detail === 0)
+  return { handled: true, open }
+}
+
+export function blockCredentialLinkEvent(event: {
+  type: string
+  detail?: number
+  metaKey?: boolean
+  ctrlKey?: boolean
+  preventDefault(): void
+}, href: string | null, attachment: boolean, editable = true): boolean {
+  return guardLinkDomEvent(event, href, attachment, editable).handled
 }
 
 /** 浮层里删除没有生效时的说明。正文或地址已经对不上，请用户重新打开。 */

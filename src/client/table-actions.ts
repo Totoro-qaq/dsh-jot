@@ -175,6 +175,12 @@ export function flushWidthAnnouncement(clock: WidthAnnouncementClock, now: numbe
   return { clock: { lastAt: now, pending: null }, announce: clock.pending }
 }
 
+/** 离开表格时丢掉还没说的宽度，避免光标已经不在表格里才播报。 */
+export function abandonWidthAnnouncement(clock: WidthAnnouncementClock | null): WidthAnnouncementClock | null {
+  if (!clock || clock.pending == null) return clock
+  return { lastAt: clock.lastAt, pending: null }
+}
+
 /** 在现有宽度（或实测宽度）上增减一列。到达上下限时不产生新的撤销步骤。 */
 export function nudgeTableColumn(state: EditorState, target: TableTarget, column: number, delta: number, measured: number): Transaction | null {
   const table = state.doc.nodeAt(target.tablePos)
