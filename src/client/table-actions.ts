@@ -148,6 +148,20 @@ export function columnWidthChange(previous: ColumnWidthSample | null, next: Colu
   return next.width
 }
 
+/** 键里带上列数：删掉或插入一列后，同一个位置已经是另一列。 */
+export function columnWidthSample(target: TableTarget | null): ColumnWidthSample | null {
+  if (!target) return null
+  return { key: `${target.tablePos}:${target.map.width}:${target.right}`, width: explicitColumnWidth(target.table, target.right - 1) }
+}
+
+/** 换了列时丢掉还没说的宽度，不把上一列的宽度报成这一列的。 */
+export function observeColumnWidth(seen: ColumnWidthSample | null, sample: ColumnWidthSample, clock: WidthAnnouncementClock | null): {
+  change: number | null; switched: boolean; clock: WidthAnnouncementClock | null
+} {
+  const switched = Boolean(seen && seen.key !== sample.key)
+  return { change: columnWidthChange(seen, sample), switched, clock: switched ? abandonWidthAnnouncement(clock) : clock }
+}
+
 /** 列宽分隔条只响应没有修饰键的左右方向键。Shift、Alt、Ctrl、Command 留给选择和快捷键。 */
 export function columnDividerDelta(event: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): -1 | 1 | null {
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null
