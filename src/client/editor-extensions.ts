@@ -6,7 +6,7 @@ import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { Color, TextStyle } from '@tiptap/extension-text-style'
 import Highlight from '@tiptap/extension-highlight'
 import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizePaletteColor } from '../model.js'
-import { JotTable, JotTableView, PersistableTableWidths } from './table-view.js'
+import { JotTable, JotTableKeys, JotTableView, PersistableTableWidths } from './table-view.js'
 import { TABLE_CELL_MIN_WIDTH } from './table-actions.js'
 import { JotHeadingKeys, JotListKeys } from './list-commands.js'
 import type { JotLocale } from './types.js'
@@ -138,7 +138,7 @@ export function createJotExtensions(options: JotExtensionOptions = {}): Extensio
     heading: { levels: [1, 2, 3, 4, 5, 6] },
     // 编辑时单击链接只移动光标，打开地址交给浮层。只读笔记仍由浏览器跟随链接。
     link: { openOnClick: false },
-  }), JotHeadingKeys, JotListKeys,
+  }), JotHeadingKeys, JotListKeys, JotTableKeys,
     TaskList, JotTaskItem.configure({ nested: true, a11y: { checkboxLabel: node => taskCheckboxLabel(node.textContent, locale()) } }),
     JotTable.configure({ resizable: true, renderWrapper: true, cellMinWidth: TABLE_CELL_MIN_WIDTH,
       handleWidth: 6, View: JotTableView }), TableRow, TableHeader, TableCell, PersistableTableWidths,

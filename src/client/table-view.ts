@@ -1,11 +1,12 @@
 import { Extension } from '@tiptap/core'
 import { Table, TableView, updateColumns } from '@tiptap/extension-table'
+import { closeHistory } from '@tiptap/pm/history'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Mapping } from '@tiptap/pm/transform'
 import { columnResizing, columnResizingPluginKey } from '@tiptap/pm/tables'
 import type { EditorView } from '@tiptap/pm/view'
-import { normalizeTableWidths, TABLE_CELL_MIN_WIDTH } from './table-actions.js'
+import { explicitColumnWidth, normalizeTableWidths, nudgeTableColumn, selectedTable, TABLE_CELL_MIN_WIDTH, TABLE_COLUMN_NUDGE } from './table-actions.js'
 import { StoreError, validateRichDoc } from '../model.js'
 
 function syncTableColumns(node: ProseMirrorNode, colgroup: HTMLTableColElement, table: HTMLTableElement, minimum: number) {
@@ -114,6 +115,41 @@ export const JotTable = Table.extend({
     })
   },
   addNodeView() { return this.options.resizable ? null : this.parent?.() ?? null },
+})
+
+function visibleColumnWidth(view: EditorView, tablePos: number, column: number, explicit: number | null): number {
+  if (explicit) return explicit
+  const shell = view.nodeDOM(tablePos)
+  const col = shell instanceof HTMLElement ? shell.querySelectorAll('col')[column] : undefined
+  const width = col instanceof HTMLElement ? col.offsetWidth : 0
+  return width > 0 ? Math.max(TABLE_CELL_MIN_WIDTH, Math.round(width)) : TABLE_CELL_MIN_WIDTH
+}
+
+/**
+ * 表格里 Tab 用来换单元格，到不了列宽控制。Alt+←／→ 直接调整当前列，
+ * 不需要先把焦点移到那条 8 像素的分隔条上。
+ */
+export const JotTableKeys = Extension.create({
+  name: 'jotTableKeys',
+  priority: 1000,
+  addKeyboardShortcuts() {
+    const nudge = (delta: number) => () => {
+      if (!this.editor.isEditable) return false
+      const target = selectedTable(this.editor.state)
+      if (!target) return false
+      const column = target.right - 1
+      const transaction = nudgeTableColumn(this.editor.state, target, column, delta,
+        visibleColumnWidth(this.editor.view, target.tablePos, column, explicitColumnWidth(target.table, column)))
+      if (!transaction) return false
+      this.editor.view.dispatch(closeHistory(transaction))
+      this.editor.view.dispatch(closeHistory(this.editor.state.tr))
+      return true
+    }
+    return {
+      'Alt-ArrowLeft': nudge(-TABLE_COLUMN_NUDGE),
+      'Alt-ArrowRight': nudge(TABLE_COLUMN_NUDGE),
+    }
+  },
 })
 
 /** Mouse coordinates can be fractional, and merged-cell resize uses zero sentinels. */

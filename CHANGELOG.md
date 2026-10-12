@@ -11,7 +11,7 @@
 
 - Shift+F10 and the keyboard menu key open the same note menu as a right-click when a note row has focus. F10 alone is left to the browser. Selection mode still has no menu.
 - The title and the editor body show the accent outline while they have keyboard focus.
-- After the column-resize control is focused, Left and Right change that column's width by 16 pixels. Dragging a border is unchanged, and each keypress is its own undo step.
+- With the caret in a table cell, Alt+Left/Right changes that column's width by 16 pixels. Tab still moves between cells. Left and Right do the same when the column-resize control itself has focus. Dragging a border is unchanged, and each keypress is its own undo step.
 - A notice that arrives while Trash's Undo is still showing no longer replaces that Undo. The latest ordinary notice appears after the Undo is dismissed or expires.
 
 ## 0.2.11 — 2026-10-11

@@ -85,7 +85,7 @@ export function shortcutHelpSections(locale: JotLocale, apple = isApplePlatform(
       row(copy('已完成项移到底部', 'Move completed items to the bottom'), copy('工具栏「整理」', 'Tidy on the toolbar')),
     ] },
     { title: copy('表格', 'Tables'), rows: [
-      row(copy('调整当前列宽（先聚焦列宽控制）', 'Resize this column (focus the column control)'), '←', '→'),
+      row(copy('调整当前列宽', 'Resize this column'), 'Alt+←', 'Alt+→'),
     ] },
     { title: copy('边写边转换', 'Type to format'), rows: [
       row(copy('在空行插入标题、清单、表格等', 'Insert a heading, list, table… on an empty line'), '/', ...en ? [] : ['、']),

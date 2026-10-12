@@ -199,6 +199,27 @@ test('tidy moves completed to-dos to the bottom of the current list, keeps relat
   assert.notDeepEqual(editor.getJSON(), saved)
 })
 
+test('Alt+Left/Right resizes the column holding the caret; the same keys do nothing outside a table', t => {
+  const editor = create([{ type: 'table', content: [{ type: 'tableRow', content: [
+    { type: 'tableCell', attrs: { colwidth: [120] }, content: [paragraph('左')] },
+    { type: 'tableCell', attrs: { colwidth: [140] }, content: [paragraph('右')] },
+  ] }] }, paragraph('正文')])
+  t.after(() => editor.destroy())
+  const width = () => editor.state.doc.firstChild!.firstChild!.firstChild!.attrs.colwidth as number[]
+  caret(editor, '左')
+  assert.equal(press(editor, 'ArrowRight', { alt: true, keyCode: 39 }), true)
+  assert.deepEqual(width(), [136])
+  assert.equal(press(editor, 'ArrowRight', { alt: true, shift: true, keyCode: 39 }), false, 'list movement keeps Shift')
+  assert.deepEqual(width(), [136])
+  assert.equal(press(editor, 'ArrowLeft', { alt: true, keyCode: 37 }), true)
+  assert.deepEqual(width(), [120])
+  assert.equal(editor.commands.undo(), true)
+  assert.deepEqual(width(), [136])
+  caret(editor, '正文')
+  assert.equal(press(editor, 'ArrowRight', { alt: true, keyCode: 39 }), false)
+  validateRichDoc(editor.getJSON())
+})
+
 test('tidy does nothing when completed items are already last, so it adds no undo step', t => {
   const editor = create([{ type: 'taskList', content: [task('未完成'), task('已完成', true), task('也完成', true)] }])
   t.after(() => editor.destroy())
