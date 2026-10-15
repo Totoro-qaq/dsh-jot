@@ -37,8 +37,7 @@ running manager. The CLI takes a separate package-operation path, so the
 documentation does not claim its `add` command returns `already-installed`.
 It tells CLI users to stop the matching Host, remove then reinstall for Web,
 and start the same profile. Custom Jot `directory` settings should be restored
-after reinstallation. These are upgrade instructions, not new host-acceptance
-results.
+after reinstallation. Actual host acceptance is recorded separately below.
 
 ## RED and GREEN checkpoints
 
@@ -54,6 +53,14 @@ results.
    explicit alpha.3 Web/rc.2 Desktop boundary. Checkpoint: `acc2610`.
 4. Bilingual upgrade GREEN: after the minimal README/guide changes, the same
    target passed **46/46**, exit 0. Checkpoint: `2dca5f4`.
+5. Accepted-host declaration RED: after the real alpha.3 Host checks,
+   `node --test tests/dsh-compatibility.test.mjs tests/workshop.test.mjs`
+   executed **49 tests: 48 pass, 1 fail**, exit 1. Workshop's precise host list
+   still omitted the newly accepted alpha.3 Web Host. Checkpoint: `741ac20`.
+6. Accepted-host declaration GREEN: after adding only alpha.3 to that list
+   and recording the bounded candidate acceptance, the same target passed
+   **49/49**, exit 0. `hotReload` remains null and activation remains
+   `restart-host`. Checkpoint: `85e9c99`.
 
 These checkpoints were created on `compat/dsh-0.2.1-alpha.3` and remain
 reachable from its HEAD. They have not been squashed.
@@ -67,6 +74,8 @@ reachable from its HEAD. They have not been squashed.
 | Types, existing editing/storage/AI/lifecycle regressions and bundles | `pnpm check` | PASS: typecheck, 435 tests, Host and Client build |
 | Client factory, Host exports, shared React and generated notices | `pnpm pack:check` | PASS |
 | Package production | `pnpm pack --pack-destination artifacts/alpha3` | PASS for the local candidate; no publication |
+| Precise accepted hosts without a changed-code hot-replacement claim | Compatibility + Workshop target | 49 pass, 0 fail, 0 skipped |
+| Real alpha.3 Web notes and bounded lifecycle acceptance | Real Host/UI receipts, summarized in `docs/VALIDATION.md` | PASS within the scope below |
 
 The first full check after changing dependencies caught an alpha.2 generated
 workspace-path license filename. `pnpm build` regenerated the notice and
@@ -79,7 +88,7 @@ published official SDK graph. Every entry names one exact official alpha.3
 SDK or its required Cordis/Schemastery/Cosmokit runtime version. No wildcard,
 global release-age override, or unrelated dependency update was added.
 
-## Coverage and remaining acceptance
+## Coverage and actual Host acceptance
 
 ```sh
 node --import tsx --test --experimental-test-coverage --test-coverage-include='src/**' tests/*.test.ts tests/*.test.mjs
@@ -88,12 +97,45 @@ node --import tsx --test --experimental-test-coverage --test-coverage-include='s
 The coverage run passed **431/431** tests before the four documentation-only
 contracts were added. Full-source coverage: **77.47% lines / 84.88% branches /
 76.36% functions**. No business source changed, and this is not a global 80%
-coverage claim. Interactive React bodies still need real-host evidence.
+coverage claim. The later real-host run supplies bounded interactive evidence;
+it does not change the measured Node coverage.
 
-At this checkpoint, actual alpha.3 Host/UI acceptance is pending. Installation,
-editing/search/attachment/export, font settings, plugin replacement,
-disable/remove isolation, retained note and attachment bytes, and restart
-must be recorded separately before adding alpha.3 to validated-host claims.
-Workshop's validated-host list still names only rc.2, alpha.1 and alpha.2.
-Existing historical acceptance does not establish alpha.3 acceptance. Native
-Windows/Linux and alpha.3 Desktop are not covered by these local checks.
+The official alpha.3 Web Host ran the 0.2.12 Jot candidate together with the
+0.4.4 Bridge candidate in an isolated Home. Installed Host and Client hashes
+match the candidate. `jot-qa/receipt.json` records **13 passing UI checks**:
+real creation/editing/Save, browser reload and body search, two task items,
+table insertion and row append, 45-paragraph scrolling, actual attachment
+upload, real Markdown ZIP/PDF/DOCX downloads, and 768px/375px interactions.
+Attachment readback is explicitly an authenticated HTTP byte check; Markdown
+and DOCX text and the PDF header were independently inspected. No external
+Office application or Host Office-engine download was used.
+
+`toggle-verification.json` records real AI UI opt-in **six tools**, opt-out
+**zero**, and co-installed plugin isolation. The exact public note JSON and
+79-byte attachment survived Jot disable/re-enable. Bridge's own style count
+followed **1/0/1** without changing other stylesheet hashes or Jot's HTTP 200
+route. Jot disable removed its HTTP route/tools without breaking Bridge's
+doctor.
+
+`duplicate-jot-install.json` and `reinstall-verification.json` confirm the
+running manager refuses an installed Jot package with `already-installed`
+and `changed:false`, then accepts removal/reinstallation from new archive
+paths with **identical business bytes** without a manual Host restart.
+Navigation, routes and tools disappeared after removal; the new archive specs
+took effect after installation, with exact note/attachment retention. An
+initial helper's changed-realpath assumption was corrected because the
+installation is hoisted; that assertion is not a product failure.
+
+`restart-verification.json` records normal shutdown exit 0, restart in the same
+Home, preserved synthetic sessions, and the exact Jot note reopened in the
+real UI with AI still off. `runtime-verification.json` confirms official SDK
+and candidate bundle versions/bytes. These receipts are local QA artifacts,
+not repository files. See `docs/VALIDATION.md` for hashes and precise limits.
+
+Workshop now names alpha.3 based on these actual Host observations. Different
+business-byte HMR, native alpha.3 Desktop, Desktop font scaling shortcuts,
+physical Windows/Linux, arbitrary other plugin combinations, fresh alpha.3
+font-setting changes, complete IME/a11y matrices and rendered PDF/DOCX layout
+remain unverified. Historical acceptance remains version-specific. Final
+uninstall/cleanup and service shutdown are pending at this checkpoint. No
+publication, CI or merge completion is claimed.
