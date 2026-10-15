@@ -1,6 +1,32 @@
 # Validation — dsh-jot
 
-Dates: 2026-10-02 through 2026-10-11 (Asia/Shanghai). Each section applies only to the version it names.
+Dates: 2026-10-02 through 2026-10-15 (Asia/Shanghai). Each section applies only to the version it names.
+
+## 0.2.12 development candidate — alpha.3 SDK baseline; Host acceptance pending
+
+Checked 2026-10-15 from `db0f6113d635c48382676bf2a5ff2d323a86d6f7` in an
+isolated compatibility worktree. The package version remains 0.2.12; this is
+not the published npm 0.2.12 artifact. All 13 directly used DSH development
+SDKs and the lockfile now use exactly `0.2.1-alpha.3`, with the official SDKs'
+required Cordis `4.0.5-alpha.2` and Schemastery `3.18.5-alpha.2`. SDK peers
+remain host-supplied `*`, the existing bounded `engines.dsh` range is retained,
+and older Cordis/Schemastery peer alternatives remain available. No business
+source, storage format, AI default or package version changed.
+
+Installed-manifest assertions and bilingual upgrade contracts pass **46/46**.
+Frozen installation, `pnpm check` (**435 tests**, typecheck and both builds),
+`pnpm pack:check` and local packing pass. The existing generator refreshed the
+bundled workspace-path package's license notice to alpha.3. Measured Node
+coverage before the four documentation contracts was **77.47% lines / 84.88%
+branches / 76.36% functions**; no global 80% gate is claimed. See the
+[TDD evidence](../.github/tdd/dsh-0.2.1-alpha.3.md).
+
+The Chinese and English guides explain alpha.3 Web's remove-then-install HMR
+lifecycle and the separate rc.2 macOS Desktop workflow, including retained
+notes and attachments. **Real alpha.3 Host/UI acceptance is still pending**;
+the Workshop validated-host list and the historical Host observations below
+have not been extended to alpha.3. No release, CI, merge or registry-install
+verification is claimed for this candidate.
 
 ## 0.2.10 — host SDK dependency policy
 
