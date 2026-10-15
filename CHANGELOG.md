@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.13 — 2026-10-15
+
+- Support the official DSH 0.2.1-alpha.3 Web host with exact development SDK pins and the required Cordis/Schemastery alpha.2 baselines. DSH SDK peers remain host-supplied `*`, the existing bounded host engine range is retained, and prior supported host versions remain listed.
+- Document alpha.3 Web upgrades through removal and reinstallation, distinguishing the running plugin manager, stopped-Host CLI operations and the separately verified rc.2 macOS Desktop workflow. Notes and attachments are retained.
+- Record real alpha.3 Web editing, search, task/table controls, attachment bytes, Markdown/PDF/DOCX downloads, AI opt-in/out, co-installed Bridge isolation, same-runtime removal/reinstallation and normal restart. Different-code hot replacement and new native-platform behavior remain unverified.
+- The Host and Client bundles are byte-identical to the accepted 0.2.12 development candidate, which was separate from the already published npm 0.2.12 package. This release changes package identity, SDK/build metadata, generated license notices and documentation; note storage, AI defaults and business source remain unchanged. See the [validation record](docs/VALIDATION.md#0213--dsh-021-alpha3-web-compatibility).
+
 ## 0.2.12 — 2026-10-12
 
 ### Writing

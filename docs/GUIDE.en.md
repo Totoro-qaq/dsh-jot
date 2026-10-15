@@ -51,14 +51,33 @@ The capture button at the top of the workbench or the compact tab takes the curr
 dsh plugin --profile desktop add dsh-jot
 # Web UI
 dsh plugin --profile web add dsh-jot
-
-# Upgrade to the latest version
-dsh plugin --profile desktop add dsh-jot@latest
-# Remove (notes are kept)
-dsh plugin --profile desktop remove dsh-jot
 ```
 
 Restart the corresponding Host after installing or upgrading. The official Desktop can enable its bundled CLI from the application menu's “Manage dsh command…”. Desktop and Web use separate profiles; installing for Web does not install for Desktop. They share notes when configured with the same data folder.
+
+To upgrade on DSH 0.2.1-alpha.3 Web, save your notes first. In the running plugin manager, remove Jot, then install `dsh-jot@latest`. With hot reload enabled, installing over an installed package returns `already-installed` and does not replace the running code. Replaceable plugins take effect immediately; restart when the Host requests it. See the [official upgrade guide](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-alpha.3/docs/upgrade-guide/v0.2.1-alpha.2/plugin-install-over-installed/guide.md).
+
+For a CLI upgrade, stop the corresponding Web Host first, remove and reinstall Jot, then start the same Web profile:
+
+```sh
+dsh plugin --profile web remove dsh-jot
+dsh plugin --profile web add dsh-jot@latest
+```
+
+The verified official macOS Desktop Host is DSH 0.2.0-rc.2, separate from alpha.3 Web. Fully quit the desktop app before using its bundled CLI, then reopen it after upgrading:
+
+```sh
+dsh plugin --profile desktop add dsh-jot@latest
+```
+
+To uninstall, choose the corresponding profile:
+
+```sh
+dsh plugin --profile desktop remove dsh-jot
+dsh plugin --profile web remove dsh-jot
+```
+
+Removal and reinstallation retain separately stored notes and attachments. If you changed the plugin's `directory` setting, record that directory first and restore the setting after reinstalling; keep the notes folder.
 
 ## Build and local development
 

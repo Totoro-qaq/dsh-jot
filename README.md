@@ -41,7 +41,7 @@ dsh plugin --profile web add dsh-jot
 
 装好后重启 DSH，左侧导航会多出「随记」。桌面版和 Web 版需要分别安装。还没有 `dsh` 命令的话，可以在官方桌面应用的菜单「管理 dsh 命令…」里安装，需要 Node.js `^22.19.0 || >=24`。
 
-升级、卸载和备份的方法见[使用指南](./docs/GUIDE.zh-CN.md#安装升级与卸载)。
+DSH 0.2.1-alpha.3 Web 升级需先移除随记再重新安装，笔记和附件保留；CLI 操作前先停止对应 Host。官方 macOS Desktop 已验收版本仍为 0.2.0-rc.2，使用自己的 Profile 和内置 CLI。具体升级、卸载和备份方法见[使用指南](./docs/GUIDE.zh-CN.md#安装升级与卸载)。
 
 ## 常见问题
 
@@ -53,7 +53,9 @@ dsh plugin --profile web add dsh-jot
 
 ## 兼容性
 
-支持 DSH 0.2.0-rc.2（官方 macOS 桌面版）和 0.2.1-alpha.1 / alpha.2（Web）。Jot 0.2.9 补充 alpha.2 的 SDK 支持声明，笔记里的代码跟随宿主的代码字体设置，旧宿主保留原有回退。Windows 和 Linux 还没有在真机上验收；具体检查范围见[验证记录](./docs/VALIDATION.md#029--dsh-021-alpha2-compatibility)。
+Jot **0.2.13** 支持官方 DSH 0.2.1-alpha.3 Web。Host/Client 运行时与本轮受测的 0.2.12 开发候选包字节一致：与 Bridge 共同完成编辑、搜索、待办、表格、附件与导出验收，禁用恢复、同业务字节卸载重装和正常重启也保留了笔记及附件。具体受测包身份和范围见[验证记录](./docs/VALIDATION.md#0213--dsh-021-alpha3-web-compatibility)。
+
+此前已验收 DSH 0.2.0-rc.2（官方 macOS 桌面版）和 0.2.1-alpha.1 / alpha.2（Web）。本轮未新增 alpha.3 原生桌面、桌面字号快捷键、Windows/Linux 真机或任意其他插件组合的验收，也未认证不同业务代码的热替换。
 
 ---
 

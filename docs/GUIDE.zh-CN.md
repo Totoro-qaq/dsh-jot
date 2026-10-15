@@ -51,14 +51,33 @@
 dsh plugin --profile desktop add dsh-jot
 # Web UI
 dsh plugin --profile web add dsh-jot
-
-# 升级到最新版本
-dsh plugin --profile desktop add dsh-jot@latest
-# 卸载（笔记数据保留）
-dsh plugin --profile desktop remove dsh-jot
 ```
 
 安装或升级后重启对应 Host。官方 Desktop 可通过应用菜单「管理 dsh 命令…」启用其内置 CLI。Desktop 与 Web 使用独立 Profile；给 Web 安装不会自动给 Desktop 安装，配置为同一个数据目录时两者共用笔记。
+
+DSH 0.2.1-alpha.3 Web 升级：先保存笔记。在运行中的插件管理器里，先移除随记，再安装 `dsh-jot@latest`；启用热重载时，对已安装的包再次安装会返回 `already-installed`，不会更新正在运行的代码。可替换的插件会直接生效；宿主提示重启时再重启。参见[官方升级说明](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-alpha.3/docs/upgrade-guide/v0.2.1-alpha.2/plugin-install-over-installed/guide.zh.md)。
+
+使用 CLI 升级时，先停止对应的 Web Host，再移除并重新安装，完成后启动原来的 Web Profile：
+
+```sh
+dsh plugin --profile web remove dsh-jot
+dsh plugin --profile web add dsh-jot@latest
+```
+
+已验收的官方 macOS Desktop 宿主为 DSH 0.2.0-rc.2，与 alpha.3 Web 分开。使用 Desktop 自带的 CLI 前先完全退出桌面应用，升级后重新打开：
+
+```sh
+dsh plugin --profile desktop add dsh-jot@latest
+```
+
+仅卸载时，选对应的 Profile：
+
+```sh
+dsh plugin --profile desktop remove dsh-jot
+dsh plugin --profile web remove dsh-jot
+```
+
+卸载和重装保留独立存储的笔记及附件。若改过插件的 `directory` 设置，先记下该目录，重装后恢复该设置；不要删除笔记目录。
 
 ## 构建和本地开发
 

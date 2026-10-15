@@ -41,7 +41,7 @@ dsh plugin --profile web add dsh-jot
 
 Restart DSH and **Jot** appears in the left navigation. Desktop and Web are installed separately. If you don't have the `dsh` command yet, install it from **Manage dsh commands…** in the official desktop app's menu; it needs Node.js `^22.19.0 || >=24`.
 
-Upgrading, removing and backing up are covered in the [guide](./docs/GUIDE.en.md#install-upgrade-and-remove).
+For DSH 0.2.1-alpha.3 Web, remove Jot before reinstalling to upgrade; notes and attachments are retained. Stop the corresponding Host before using the CLI. The verified official macOS Desktop remains 0.2.0-rc.2 and uses its own profile and bundled CLI. Upgrade, removal and backup instructions are in the [guide](./docs/GUIDE.en.md#install-upgrade-and-remove).
 
 ## FAQ
 
@@ -53,7 +53,9 @@ Upgrading, removing and backing up are covered in the [guide](./docs/GUIDE.en.md
 
 ## Compatibility
 
-Works with DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 / alpha.2 (Web). Jot 0.2.9 adds the alpha.2 SDK declarations and follows the host code-font settings while preserving older-host fallbacks. Native Windows and Linux remain unverified; see the [validation record](./docs/VALIDATION.md#029--dsh-021-alpha2-compatibility) for the exact scope.
+Jot **0.2.13** supports official DSH 0.2.1-alpha.3 Web. Its Host/Client bundles are byte-identical to the 0.2.12 development candidate that passed editing, search, task, table, attachment and export checks together with Bridge. Disable/re-enable, removal/reinstallation of identical business bundles, and a normal Host restart retained notes and attachments. See the [validation record](./docs/VALIDATION.md#0213--dsh-021-alpha3-web-compatibility) for the exact tested package and scope.
+
+Earlier acceptance covers DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 / alpha.2 (Web). This pass adds no acceptance for native alpha.3 Desktop, Desktop font-size shortcuts, physical Windows/Linux systems, arbitrary other plugin combinations, or hot replacement with changed business code.
 
 ---
 

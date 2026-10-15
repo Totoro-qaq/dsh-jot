@@ -1,4 +1,4 @@
-@deepseek-ai/dsh-util-workspace-path@0.2.1-alpha.2
+@deepseek-ai/dsh-util-workspace-path@0.2.1-alpha.3
 License: MIT
 Source: https://www.npmjs.com/package/@deepseek-ai/dsh-util-workspace-path
 Repository: https://github.com/deepseek-ai/deepseek-harness
