@@ -41,7 +41,7 @@ dsh plugin --profile web add dsh-jot
 
 Restart DSH and **Jot** appears in the left navigation. Desktop and Web are installed separately. If you don't have the `dsh` command yet, install it from **Manage dsh commands…** in the official desktop app's menu; it needs Node.js `^22.19.0 || >=24`.
 
-Upgrading, removing and backing up are covered in the [guide](./docs/GUIDE.en.md#install-upgrade-and-remove).
+For DSH 0.2.1-alpha.3 Web, remove Jot before reinstalling to upgrade; notes and attachments are retained. Stop the corresponding Host before using the CLI. The verified official macOS Desktop remains 0.2.0-rc.2 and uses its own profile and bundled CLI. Upgrade, removal and backup instructions are in the [guide](./docs/GUIDE.en.md#install-upgrade-and-remove).
 
 ## FAQ
 

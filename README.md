@@ -41,7 +41,7 @@ dsh plugin --profile web add dsh-jot
 
 装好后重启 DSH，左侧导航会多出「随记」。桌面版和 Web 版需要分别安装。还没有 `dsh` 命令的话，可以在官方桌面应用的菜单「管理 dsh 命令…」里安装，需要 Node.js `^22.19.0 || >=24`。
 
-升级、卸载和备份的方法见[使用指南](./docs/GUIDE.zh-CN.md#安装升级与卸载)。
+DSH 0.2.1-alpha.3 Web 升级需先移除随记再重新安装，笔记和附件保留；CLI 操作前先停止对应 Host。官方 macOS Desktop 已验收版本仍为 0.2.0-rc.2，使用自己的 Profile 和内置 CLI。具体升级、卸载和备份方法见[使用指南](./docs/GUIDE.zh-CN.md#安装升级与卸载)。
 
 ## 常见问题
 
