@@ -53,7 +53,7 @@ DSH 0.2.1-alpha.3 Web 升级需先移除随记再重新安装，笔记和附件�
 
 ## 兼容性
 
-本次 **0.2.12 候选包**已在官方 DSH 0.2.1-alpha.3 Web 中，与 Bridge 0.4.4 候选包共同完成编辑、搜索、待办、表格、附件与导出验收；禁用恢复、同业务字节卸载重装和正常重启也保留了笔记及附件。该结果不代表已发布的 npm 0.2.12 包已通过 alpha.3 验收；具体范围见[验证记录](./docs/VALIDATION.md#0212-development-candidate--dsh-021-alpha3-web-acceptance)。
+Jot **0.2.13** 支持官方 DSH 0.2.1-alpha.3 Web。Host/Client 运行时与本轮受测的 0.2.12 开发候选包字节一致：与 Bridge 共同完成编辑、搜索、待办、表格、附件与导出验收，禁用恢复、同业务字节卸载重装和正常重启也保留了笔记及附件。具体受测包身份和范围见[验证记录](./docs/VALIDATION.md#0213--dsh-021-alpha3-web-compatibility)。
 
 此前已验收 DSH 0.2.0-rc.2（官方 macOS 桌面版）和 0.2.1-alpha.1 / alpha.2（Web）。本轮未新增 alpha.3 原生桌面、桌面字号快捷键、Windows/Linux 真机或任意其他插件组合的验收，也未认证不同业务代码的热替换。
 

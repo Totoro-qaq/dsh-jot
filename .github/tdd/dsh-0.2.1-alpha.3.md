@@ -2,8 +2,11 @@
 
 Date: 2026-10-15 (Asia/Shanghai). Source plan: the authorized isolated Jot
 compatibility task; journeys were derived during this run. Starting commit:
-`db0f6113d635c48382676bf2a5ff2d323a86d6f7` (`dsh-jot@0.2.12`). The package
-version remains **0.2.12**. No publication or upstream repository write occurred.
+`db0f6113d635c48382676bf2a5ff2d323a86d6f7` (`dsh-jot@0.2.12`). Implementation
+and actual Host acceptance used a **0.2.12 development candidate**, separate
+from the published npm 0.2.12 package. Subsequent release preparation names
+the same accepted Host/Client bundles **0.2.13**; their bytes are unchanged.
+This local evidence record does not establish npm publication or remote gates.
 
 ## Scope and source contracts
 
@@ -148,3 +151,26 @@ font-setting changes, complete IME/a11y matrices and rendered PDF/DOCX layout
 remain unverified. Historical acceptance remains version-specific. Final
 uninstall/cleanup and service shutdown are complete. No publication, CI or
 merge completion is claimed.
+
+## 0.2.13 release preparation
+
+Checked 2026-10-15 before remote publication work. The live npm registry named
+`0.2.12` as latest and did not contain `0.2.13`; remote main remained the
+starting `db0f6113d635c48382676bf2a5ff2d323a86d6f7`, with no `v0.2.13` tag.
+The repository's release preflight rejected `v0.2.13` while the manifest still
+named 0.2.12; after the metadata bump, the same preflight accepted 0.2.13 as
+newer than npm latest. This was a read-only preflight, not publication.
+
+Package identity, changelog and bilingual compatibility copy now describe
+0.2.13; the actual Host receipts retain their original 0.2.12 development
+candidate identity. `pnpm install --lockfile-only --ignore-scripts` regenerated
+the lock without an additional diff because this format does not record the
+root package version. Frozen installation, `pnpm check` (**435/435** tests,
+types and builds) and `pnpm pack:check` passed again. Built Host and Client
+SHA-256 values match the accepted candidate recorded in `docs/VALIDATION.md`.
+Business source and build/release scripts are unchanged.
+
+The existing workflow publishes only after a stable GitHub Release event,
+requires the tag source in reviewed main history, rechecks registry state,
+and uses npm provenance with OIDC. Those remote gates and a fresh registry
+installation remain separate from this local preparation record.

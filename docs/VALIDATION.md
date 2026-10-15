@@ -2,16 +2,21 @@
 
 Dates: 2026-10-02 through 2026-10-15 (Asia/Shanghai). Each section applies only to the version it names.
 
-## 0.2.12 development candidate — DSH 0.2.1-alpha.3 Web acceptance
+## 0.2.13 — DSH 0.2.1-alpha.3 Web compatibility
 
-Checked 2026-10-15 from `db0f6113d635c48382676bf2a5ff2d323a86d6f7` in an
-isolated compatibility worktree. The package version remains 0.2.12; this is
-not the published npm 0.2.12 artifact. All 13 directly used DSH development
+Release preparation checked 2026-10-15 in an isolated compatibility worktree,
+starting from `db0f6113d635c48382676bf2a5ff2d323a86d6f7`. The actual Host
+acceptance below used a **0.2.12 development candidate**, separate from the
+published npm 0.2.12 artifact. Release preparation changes its package version
+to **0.2.13** without changing the accepted Host/Client bundle bytes. CI,
+merge, tag, npm publication, provenance and registry-install verification are
+separate release gates and are not established by this preparation record.
+All 13 directly used DSH development
 SDKs and the lockfile now use exactly `0.2.1-alpha.3`, with the official SDKs'
 required Cordis `4.0.5-alpha.2` and Schemastery `3.18.5-alpha.2`. SDK peers
 remain host-supplied `*`, the existing bounded `engines.dsh` range is retained,
-and older Cordis/Schemastery peer alternatives remain available. No business
-source, storage format, AI default or package version changed.
+and older Cordis/Schemastery peer alternatives remain available. Business
+source, storage format and AI defaults are unchanged.
 
 Installed-manifest assertions and bilingual upgrade contracts pass **46/46**.
 Frozen installation, `pnpm check` (**435 tests**, typecheck and both builds),
@@ -21,7 +26,7 @@ coverage before the four documentation contracts was **77.47% lines / 84.88%
 branches / 76.36% functions**; no global 80% gate is claimed. See the
 [TDD evidence](../.github/tdd/dsh-0.2.1-alpha.3.md).
 
-### Actual official alpha.3 Web Host checks
+### Actual official alpha.3 Web Host checks — 0.2.12 development candidate
 
 The candidate ran with `dsh-plugin-bridge@0.4.4` in a fresh isolated Home using
 official DSH **0.2.1-alpha.3 Web**. Installed SDK manifests read back alpha.3,
@@ -29,8 +34,9 @@ Cordis alpha.2 and Schemastery alpha.2. Installed Jot Host SHA-256:
 `df33a63d37d8d230fb4b8be59c8e458d6b9e9e5aba0c036aff29be8c36a2df8d`;
 Client SHA-256:
 `7ebeecfee9587fd94adb09186d040f7485951f9e16edb41c7991eb49a06d1846`.
-Both match the locally built candidate. This does not attest to the already
-published npm 0.2.12 artifact.
+Both match the locally built 0.2.13 release preparation bundles. These hashes
+attest to the accepted development candidate and identical 0.2.13 runtime,
+not the previously published npm 0.2.12 artifact.
 
 | Check | Observed result |
 | --- | --- |

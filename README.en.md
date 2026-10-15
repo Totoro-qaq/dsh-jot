@@ -53,7 +53,7 @@ For DSH 0.2.1-alpha.3 Web, remove Jot before reinstalling to upgrade; notes and 
 
 ## Compatibility
 
-This **0.2.12 candidate** passed editing, search, task, table, attachment and export checks in official DSH 0.2.1-alpha.3 Web, together with the Bridge 0.4.4 candidate. Disable/re-enable, removal/reinstallation of identical business bundles, and a normal Host restart retained notes and attachments. This does not establish alpha.3 acceptance for the already published npm 0.2.12 package; see the [validation record](./docs/VALIDATION.md#0212-development-candidate--dsh-021-alpha3-web-acceptance).
+Jot **0.2.13** supports official DSH 0.2.1-alpha.3 Web. Its Host/Client bundles are byte-identical to the 0.2.12 development candidate that passed editing, search, task, table, attachment and export checks together with Bridge. Disable/re-enable, removal/reinstallation of identical business bundles, and a normal Host restart retained notes and attachments. See the [validation record](./docs/VALIDATION.md#0213--dsh-021-alpha3-web-compatibility) for the exact tested package and scope.
 
 Earlier acceptance covers DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 / alpha.2 (Web). This pass adds no acceptance for native alpha.3 Desktop, Desktop font-size shortcuts, physical Windows/Linux systems, arbitrary other plugin combinations, or hot replacement with changed business code.
 
