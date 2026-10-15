@@ -93,7 +93,7 @@
       "ui:extend"
     ],
     "compatibility": {
-      "dshVersions": ["0.2.0-rc.2", "0.2.1-alpha.1", "0.2.1-alpha.2"]
+      "dshVersions": ["0.2.0-rc.2", "0.2.1-alpha.1", "0.2.1-alpha.2", "0.2.1-alpha.3"]
     },
     "capability": {
       "id": "dsh-jot",

@@ -2,7 +2,7 @@
 
 Dates: 2026-10-02 through 2026-10-15 (Asia/Shanghai). Each section applies only to the version it names.
 
-## 0.2.12 development candidate — alpha.3 SDK baseline; Host acceptance pending
+## 0.2.12 development candidate — DSH 0.2.1-alpha.3 Web acceptance
 
 Checked 2026-10-15 from `db0f6113d635c48382676bf2a5ff2d323a86d6f7` in an
 isolated compatibility worktree. The package version remains 0.2.12; this is
@@ -21,12 +21,54 @@ coverage before the four documentation contracts was **77.47% lines / 84.88%
 branches / 76.36% functions**; no global 80% gate is claimed. See the
 [TDD evidence](../.github/tdd/dsh-0.2.1-alpha.3.md).
 
-The Chinese and English guides explain alpha.3 Web's remove-then-install HMR
-lifecycle and the separate rc.2 macOS Desktop workflow, including retained
-notes and attachments. **Real alpha.3 Host/UI acceptance is still pending**;
-the Workshop validated-host list and the historical Host observations below
-have not been extended to alpha.3. No release, CI, merge or registry-install
-verification is claimed for this candidate.
+### Actual official alpha.3 Web Host checks
+
+The candidate ran with `dsh-plugin-bridge@0.4.4` in a fresh isolated Home using
+official DSH **0.2.1-alpha.3 Web**. Installed SDK manifests read back alpha.3,
+Cordis alpha.2 and Schemastery alpha.2. Installed Jot Host SHA-256:
+`df33a63d37d8d230fb4b8be59c8e458d6b9e9e5aba0c036aff29be8c36a2df8d`;
+Client SHA-256:
+`7ebeecfee9587fd94adb09186d040f7485951f9e16edb41c7991eb49a06d1846`.
+Both match the locally built candidate. This does not attest to the already
+published npm 0.2.12 artifact.
+
+| Check | Observed result |
+| --- | --- |
+| Real editing, Save, search and reopening | A new public note was created through the actual Jot UI. It retained 45 paragraphs, two tasks with one checked, a table expanded from three to four rows, and a file attachment. After browser reload, a body-text search found the note and reopening retained its contents and controls. Authenticated HTTP reads independently confirmed persisted revisions. |
+| Real attachment upload and exact readback | The actual attachment button and file chooser uploaded a public TXT file. An authenticated HTTP content read returned all **79 bytes**, SHA-256 `ea41c4c296b6a4b858d4160f05937fccf0b86de8ecca56b0b3dbcfa463a23ab9`. The byte comparison is HTTP evidence, not a separate UI download claim. |
+| Real export downloads | The Jot menu downloaded Markdown ZIP, PDF and DOCX without opening another application or downloading the Host Office engine. The ZIP contained the latest note text and exact attachment bytes; the PDF had a valid `%PDF-` header; DOCX `word/document.xml` contained the saved public text. Full rendered PDF/DOCX layout was not inspected. |
+| Long content and narrow windows | At 1280 × 900 the content scrolled within an **812px** editor body over **2,045px**, with document actions still visible. With the Host sidebar collapsed and the Jot list hidden, actual menu and Find clicks worked at **768px** and **375px**; page width equaled the viewport and attachment/menu/Find controls stayed inside it. No page errors, console errors or HTTP responses at 400+ were observed during the 13-check UI run. This is not a visual-baseline or complete accessibility acceptance claim. |
+| AI default and explicit choice | Jot began with AI collaboration off and zero Jot tools. Actual UI opt-in registered six tools, and opt-out returned to zero. AI remained off after the later lifecycle checks. An in-flight model-call opt-out was not repeated; the older 0.2.7 evidence remains separate. |
+| Co-installed plugin isolation | Bridge disable/re-enable changed its stylesheet count **1 → 0 → 1** while other stylesheet hashes and Jot's authenticated HTTP 200 route stayed intact. Disabling Jot removed its route (HTTP 404) and tools; re-enabling restored it with the exact prior note JSON and attachment bytes. Bridge doctor stayed **13/13** during Jot's toggle. |
+| Duplicate install and removal/reinstallation | The running HMR manager refused an install over existing Jot with `already-installed`, `changed:false`. Removing both candidates returned `applied`; Jot navigation, route and tools disappeared. Installing them from new archive paths with identical business bytes returned `applied` without a manual Host restart. The new archive specs persisted, and the note JSON and attachment bytes were exact. Hoisted installation paths may stay unchanged; an initial QA helper incorrectly required a changed realpath, and that failed assumption is excluded from product results. |
+| Normal same-Home restart | The Host stopped normally with exit **0** and restarted using the same isolated Home. All three synthetic session IDs and titles remained. Jot's note was reopened in the real UI; its complete JSON was exact and AI remained off. |
+
+Local machine-readable receipts are `jot-qa/receipt.json` (13 UI checks),
+`toggle-verification.json`, `duplicate-jot-install.json`,
+`reinstall-verification.json`, `restart-verification.json` and
+`runtime-verification.json` in the isolated QA scratch. Screenshots, public
+fixture JSON and actual download files remain with those local receipts;
+temporary QA scripts are not repository or package contents. The two earlier
+UI-helper failures were an incorrect button/switch selector and a comparison
+that omitted Markdown's legitimate escaping; both were corrected before the
+successful UI run and are not product failures.
+
+The Chinese and English guides explain alpha.3 Web's remove-then-install
+lifecycle and the separate rc.2 macOS Desktop workflow. Workshop now names
+alpha.3 among the precisely accepted hosts. Its conservative `restart-host`
+activation and null `hotReload` evidence remain: **replacement with changed
+business code was not tested**. Profile installation emitted peer warnings;
+host-supplied SDK resolution and installed runtime bytes were independently
+verified, and no passing profile-only peer check is claimed.
+
+All notes, sessions and files were synthetic; the formal Desktop application
+and ordinary Home were not modified. Native alpha.3 Desktop, Desktop
+Cmd/Ctrl-plus/minus font scaling, physical Windows/Linux systems, arbitrary
+other plugin combinations, fresh alpha.3 font-setting changes, full IME/a11y
+matrices and rendered Office/PDF layout remain outside this acceptance pass.
+The historical sections below retain their own version boundaries. Final QA
+uninstall/cleanup and service shutdown are still pending at this checkpoint.
+No release, CI, merge or registry-install verification is claimed.
 
 ## 0.2.10 — host SDK dependency policy
 
