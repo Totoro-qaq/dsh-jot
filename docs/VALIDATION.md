@@ -42,12 +42,14 @@ published npm 0.2.12 artifact.
 | Co-installed plugin isolation | Bridge disable/re-enable changed its stylesheet count **1 → 0 → 1** while other stylesheet hashes and Jot's authenticated HTTP 200 route stayed intact. Disabling Jot removed its route (HTTP 404) and tools; re-enabling restored it with the exact prior note JSON and attachment bytes. Bridge doctor stayed **13/13** during Jot's toggle. |
 | Duplicate install and removal/reinstallation | The running HMR manager refused an install over existing Jot with `already-installed`, `changed:false`. Removing both candidates returned `applied`; Jot navigation, route and tools disappeared. Installing them from new archive paths with identical business bytes returned `applied` without a manual Host restart. The new archive specs persisted, and the note JSON and attachment bytes were exact. Hoisted installation paths may stay unchanged; an initial QA helper incorrectly required a changed realpath, and that failed assumption is excluded from product results. |
 | Normal same-Home restart | The Host stopped normally with exit **0** and restarted using the same isolated Home. All three synthetic session IDs and titles remained. Jot's note was reopened in the real UI; its complete JSON was exact and AI remained off. |
+| Final removal and shutdown | Removing both candidates returned `applied`. Both stylesheets, Jot navigation and tools, and both managed bundles were absent; the Jot route returned HTTP 404 while the Host remained usable. The main notes JSON and 79-byte attachment remained exact, and all three synthetic sessions remained. The Host subsequently stopped normally with exit **0**, the QA browser/launcher exited **0**, and neither QA port was listening. |
 
 Local machine-readable receipts are `jot-qa/receipt.json` (13 UI checks),
 `toggle-verification.json`, `duplicate-jot-install.json`,
 `reinstall-verification.json`, `restart-verification.json` and
-`runtime-verification.json` in the isolated QA scratch. Screenshots, public
-fixture JSON and actual download files remain with those local receipts;
+`runtime-verification.json`, `cleanup-verification.json` and
+`final-cleanup.json` in the isolated QA scratch. Screenshots, public fixture
+JSON and actual download files remain with those local receipts;
 temporary QA scripts are not repository or package contents. The two earlier
 UI-helper failures were an incorrect button/switch selector and a comparison
 that omitted Markdown's legitimate escaping; both were corrected before the
@@ -67,8 +69,11 @@ Cmd/Ctrl-plus/minus font scaling, physical Windows/Linux systems, arbitrary
 other plugin combinations, fresh alpha.3 font-setting changes, full IME/a11y
 matrices and rendered Office/PDF layout remain outside this acceptance pass.
 The historical sections below retain their own version boundaries. Final QA
-uninstall/cleanup and service shutdown are still pending at this checkpoint.
-No release, CI, merge or registry-install verification is claimed.
+removal and service shutdown are complete. Synthetic user data and package
+caches intentionally remain, and pnpm left a dangling `dsh-bridge` bin link
+whose target no longer exists. That Host/package-manager residue is separate
+from Jot's retained notes; no zero-disk-trace removal is claimed. No release,
+CI, merge or registry-install verification is claimed.
 
 ## 0.2.10 — host SDK dependency policy
 

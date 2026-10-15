@@ -132,10 +132,19 @@ real UI with AI still off. `runtime-verification.json` confirms official SDK
 and candidate bundle versions/bytes. These receipts are local QA artifacts,
 not repository files. See `docs/VALIDATION.md` for hashes and precise limits.
 
+`cleanup-verification.json` records final removal of both candidates with
+`applied`, absent styles/navigation/tools/bundle entries and Jot HTTP 404.
+The main notes JSON and 79-byte attachment remained exact; all three synthetic
+sessions remained. `final-cleanup.json` records normal Host and QA-browser
+launcher exit 0 and no listeners on the two QA ports. Formal profiles and
+primary workspaces were not modified. Synthetic data and package caches
+remain, and a dangling pnpm `dsh-bridge` bin link is known Host/package-manager
+residue; this is not a claim of zero disk traces or lost Jot notes.
+
 Workshop now names alpha.3 based on these actual Host observations. Different
 business-byte HMR, native alpha.3 Desktop, Desktop font scaling shortcuts,
 physical Windows/Linux, arbitrary other plugin combinations, fresh alpha.3
 font-setting changes, complete IME/a11y matrices and rendered PDF/DOCX layout
 remain unverified. Historical acceptance remains version-specific. Final
-uninstall/cleanup and service shutdown are pending at this checkpoint. No
-publication, CI or merge completion is claimed.
+uninstall/cleanup and service shutdown are complete. No publication, CI or
+merge completion is claimed.
