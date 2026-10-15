@@ -2,7 +2,7 @@
 
 The published client bundle `lib/client.js` includes the third-party packages below. Minification removes their license comments, so each package's copyright notice and license text is reproduced under `LICENSES/`. React and ReactDOM are not bundled; the host provides them. The server entry `lib/index.js` keeps its npm dependencies external.
 
-- `@deepseek-ai/dsh-util-workspace-path@0.2.1-alpha.2` — MIT — [license](LICENSES/@deepseek-ai_dsh-util-workspace-path@0.2.1-alpha.2.txt)
+- `@deepseek-ai/dsh-util-workspace-path@0.2.1-alpha.3` — MIT — [license](LICENSES/@deepseek-ai_dsh-util-workspace-path@0.2.1-alpha.3.txt)
 - `@tanstack/react-virtual@3.14.13` — MIT — [license](LICENSES/@tanstack_react-virtual@3.14.13.txt)
 - `@tanstack/virtual-core@3.17.11` — MIT — [license](LICENSES/@tanstack_virtual-core@3.17.11.txt)
 - `@tiptap/core@3.31.4` — MIT — [license](LICENSES/@tiptap_core@3.31.4.txt)
