@@ -39,3 +39,24 @@ for (const [name, version] of [
     assert.equal(installed.version, version)
   })
 }
+
+for (const [readme, guide] of [
+  ['README.md', 'docs/GUIDE.zh-CN.md'],
+  ['README.en.md', 'docs/GUIDE.en.md'],
+]) {
+  const readmeText = readFileSync(new URL(`../${readme}`, import.meta.url), 'utf8')
+  const guideText = readFileSync(new URL(`../${guide}`, import.meta.url), 'utf8')
+
+  test(`${guide} upgrades alpha.3 Web by removing the installed package before adding its replacement`, () => {
+    assert.match(guideText, /dsh plugin --profile web remove dsh-jot\s*\ndsh plugin --profile web add dsh-jot@latest/u)
+    assert.match(guideText, /already-installed/u)
+    assert.match(guideText, /dsh-v0\.2\.1-alpha\.3\/docs\/upgrade-guide\/v0\.2\.1-alpha\.2\/plugin-install-over-installed\/guide/u)
+  })
+
+  test(`${readme} and its upgrade guide distinguish alpha.3 Web from the official rc.2 Desktop`, () => {
+    assert.match(readmeText, /alpha\.3.*Web/u)
+    assert.match(guideText, /0\.2\.0-rc\.2/u)
+    assert.ok(readmeText.includes(guide.replace('docs/', './docs/')))
+    assert.doesNotMatch(guideText, /(?:rm|rmdir)\s+[^\n]*(?:\.dsh|DSH_HOME|\/jot)/u)
+  })
+}
