@@ -6,6 +6,8 @@
 
 <p align="center"><a href="#install">Install</a> · <a href="./docs/GUIDE.en.md">Guide</a> · <a href="./CHANGELOG.md">Changelog</a> · <a href="./README.md">简体中文</a></p>
 
+<p align="center"><a href="#discover"><img src="https://img.shields.io/badge/Discover-Add_source-2563eb" alt="Discover · Add source"></a></p>
+
 ![In a DSH conversation, AI adds the three agreed tasks to the note Weekly sync; the note shows AI edited, and one task is checked off](https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/jot-demo-en.gif)
 
 ## What it does
@@ -31,6 +33,8 @@ While collaboration is off, Jot's tools are not offered to the conversation at a
 
 ## Install
 
+### npm / CLI
+
 ```sh
 # Desktop app
 dsh plugin --profile desktop add dsh-jot
@@ -42,6 +46,16 @@ dsh plugin --profile web add dsh-jot
 Restart DSH and **Jot** appears in the left navigation. Desktop and Web are installed separately. If you don't have the `dsh` command yet, install it from **Manage dsh commands…** in the official desktop app's menu; it needs Node.js `^22.19.0 || >=24`.
 
 For DSH 0.2.1-alpha.3 Web, remove Jot before reinstalling to upgrade; notes and attachments are retained. Stop the corresponding Host before using the CLI. The verified official macOS Desktop remains 0.2.0-rc.2 and uses its own profile and bundled CLI. Upgrade, removal and backup instructions are in the [guide](./docs/GUIDE.en.md#install-upgrade-and-remove).
+
+### Discover
+
+DSH introduced custom plugin markets in 0.2.1-alpha.4. On versions that support them:
+
+1. Open **Plugins → Experimental plugins → More** and enable **Custom plugin markets**.
+2. Open **Discover → Add index source** and paste `https://raw.githubusercontent.com/Totoro-qaq/dsh-plugin-index/main/index.json`.
+3. Select **Jot**, check the package name `dsh-jot`, version and npm registry `https://registry.npmjs.org/`, then confirm installation and choose **Enable now**.
+
+This is an [author-maintained third-party source](https://github.com/Totoro-qaq/dsh-plugin-index); it does not imply DSH certification or community approval and is not added automatically for every user. This Discover flow was verified in an isolated alpha.4 WebHost, not native Desktop. If Discover is unavailable, use the npm method above.
 
 ## FAQ
 
