@@ -6,6 +6,8 @@
 
 <p align="center"><a href="#安装">安装</a> · <a href="./docs/GUIDE.zh-CN.md">使用指南</a> · <a href="./CHANGELOG.md">更新记录</a> · <a href="./README.en.md">English</a></p>
 
+<p align="center"><a href="#discover"><img src="https://img.shields.io/badge/Discover-%E6%B7%BB%E5%8A%A0%E6%BA%90-2563eb" alt="Discover · 添加源"></a></p>
+
 ![在 DSH 对话里让 AI 把周会分工记进随记：右侧笔记出现三条待办和「AI 修改」标记，随后勾掉一条](https://raw.githubusercontent.com/Totoro-qaq/dsh-jot/main/docs/media/jot-demo-zh.gif)
 
 ## 能做什么
@@ -31,6 +33,8 @@ AI 只改需要改的地方：改几个字，就只换那几个字，原来的�
 
 ## 安装
 
+### npm / CLI
+
 ```sh
 # 桌面客户端
 dsh plugin --profile desktop add dsh-jot
@@ -42,6 +46,16 @@ dsh plugin --profile web add dsh-jot
 装好后重启 DSH，左侧导航会多出「随记」。桌面版和 Web 版需要分别安装。还没有 `dsh` 命令的话，可以在官方桌面应用的菜单「管理 dsh 命令…」里安装，需要 Node.js `^22.19.0 || >=24`。
 
 DSH 0.2.1-alpha.3 Web 升级需先移除随记再重新安装，笔记和附件保留；CLI 操作前先停止对应 Host。官方 macOS Desktop 已验收版本仍为 0.2.0-rc.2，使用自己的 Profile 和内置 CLI。具体升级、卸载和备份方法见[使用指南](./docs/GUIDE.zh-CN.md#安装升级与卸载)。
+
+### Discover
+
+DSH 从 0.2.1-alpha.4 起引入自定义插件市场，也可以通过 Discover 安装：
+
+1. 打开 **插件 → 实验性插件 → 更多**，启用 **自定义插件市场**。
+2. 进入 **发现（Discover）→ 添加索引源**，粘贴 `https://raw.githubusercontent.com/Totoro-qaq/dsh-plugin-index/main/index.json`。
+3. 选择 **随记 Jot**，核对包名 `dsh-jot`、版本和 npm 来源 `https://registry.npmjs.org/`，确认安装后点 **立即启用**。
+
+这是[作者维护的第三方源](https://github.com/Totoro-qaq/dsh-plugin-index)，不代表 DSH 官方认证或社区审核，不会自动添加给所有用户。本次 Discover 流程在隔离的 alpha.4 WebHost 验收，未新增原生桌面验收；看不到 Discover 时，继续用上面的 npm 方式安装即可。
 
 ## 常见问题
 
