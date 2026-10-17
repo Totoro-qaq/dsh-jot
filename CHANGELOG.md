@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.14 — 2026-10-17
+
+### Fixed
+
+- Keep Jot usable when an optional PDF or Word export dependency cannot load. Notes, checklists, search, attachments and the remaining export formats no longer depend on those engines loading successfully.
+- Ship the PDF engine and its locked transitive dependencies in a private Node runtime. Existing profiles retaining the broken `unicode-properties@1.4.0` CommonJS entry no longer prevent startup or PDF export. No shared profile dependency repair is needed.
+- Check PDF and Word export with small synthetic documents in the background. Report unavailable formats before export, disable only those choices, and keep a known failure visible across failed status refreshes. Diagnostic codes do not expose local paths. Older Hosts without the health endpoint are marked unverified rather than healthy.
+
+### Scope
+
+No notes schema, storage migration, agent-access default, or other plugin configuration changes. The preflight checks engine/font readiness, not every possible document-specific image or layout error; it is not a worker-process sandbox.
+
 ## 0.2.13 — 2026-10-15
 
 - Support the official DSH 0.2.1-alpha.3 Web host with exact development SDK pins and the required Cordis/Schemastery alpha.2 baselines. DSH SDK peers remain host-supplied `*`, the existing bounded host engine range is retained, and prior supported host versions remain listed.

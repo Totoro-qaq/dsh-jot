@@ -215,25 +215,25 @@ async function wordDocument(input: Input, assets: Assets): Promise<Buffer> {
   const { Document, ExternalHyperlink, HeadingLevel, ImageRun, LevelFormat, Packer,
     AlignmentType, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, UnderlineType, WidthType,
   } = await (wordEngine ??= import('docx'))
-function markOptions(marks: RichMark[] = []): IRunOptions {
-  const options: IRunOptions = { font: { name: 'Noto Sans SC', eastAsia: 'Noto Sans SC' } }
-  return marks.reduce<IRunOptions>((result, mark) => {
-    if (mark.type === 'bold') return { ...result, bold: true }
-    if (mark.type === 'italic') return { ...result, italics: true }
-    if (mark.type === 'underline') return { ...result, underline: { type: UnderlineType.SINGLE } }
-    if (mark.type === 'strike') return { ...result, strike: true }
-    if (mark.type === 'code') return { ...result, font: { name: 'Consolas', eastAsia: 'Noto Sans SC' } }
-    if (mark.attrs?.color && mark.type === 'textStyle') return { ...result, color: String(mark.attrs.color).slice(1) }
-    if (mark.attrs?.color && mark.type === 'highlight') return { ...result, shading: { type: ShadingType.CLEAR, fill: String(mark.attrs.color).slice(1) } }
-    return result
-  }, options)
-}
-function docxInline(node: RichNode): ParagraphChild[] {
-  if (node.type === 'hardBreak') return [new TextRun({ break: 1 })]
-  const run = new TextRun({ text: node.text ?? '', ...markOptions(node.marks) })
-  const link = node.marks?.find(mark => mark.type === 'link')
-  return [link ? new ExternalHyperlink({ link: String(link.attrs?.href), children: [run] }) : run]
-}
+  function markOptions(marks: RichMark[] = []): IRunOptions {
+    const options: IRunOptions = { font: { name: 'Noto Sans SC', eastAsia: 'Noto Sans SC' } }
+    return marks.reduce<IRunOptions>((result, mark) => {
+      if (mark.type === 'bold') return { ...result, bold: true }
+      if (mark.type === 'italic') return { ...result, italics: true }
+      if (mark.type === 'underline') return { ...result, underline: { type: UnderlineType.SINGLE } }
+      if (mark.type === 'strike') return { ...result, strike: true }
+      if (mark.type === 'code') return { ...result, font: { name: 'Consolas', eastAsia: 'Noto Sans SC' } }
+      if (mark.attrs?.color && mark.type === 'textStyle') return { ...result, color: String(mark.attrs.color).slice(1) }
+      if (mark.attrs?.color && mark.type === 'highlight') return { ...result, shading: { type: ShadingType.CLEAR, fill: String(mark.attrs.color).slice(1) } }
+      return result
+    }, options)
+  }
+  function docxInline(node: RichNode): ParagraphChild[] {
+    if (node.type === 'hardBreak') return [new TextRun({ break: 1 })]
+    const run = new TextRun({ text: node.text ?? '', ...markOptions(node.marks) })
+    const link = node.marks?.find(mark => mark.type === 'link')
+    return [link ? new ExternalHyperlink({ link: String(link.attrs?.href), children: [run] }) : run]
+  }
   let counter = 0
   const numbering: { reference: string; levels: { level: number; format: typeof LevelFormat.DECIMAL; text: string; start: number }[] }[] = []
   const heading = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6]

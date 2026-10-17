@@ -67,6 +67,8 @@ This is an [author-maintained third-party source](https://github.com/Totoro-qaq/
 
 ## Compatibility
 
+Jot **0.2.14** fixes startup failures caused by a broken PDF dependency retained in an older profile. PDF and Word exports have independent background preflight checks: a failure is reported before export and disables only that format. Notes, Markdown and plain-text exports remain independent. See the [version-specific record](./docs/VALIDATION.md#0214--legacy-profile-export-isolation) for old-profile regressions, Desktop Host acceptance and outstanding checks. This is not a storage migration and does not clean up notes or other plugins.
+
 Jot **0.2.13** supports official DSH 0.2.1-alpha.3 Web. Its Host/Client bundles are byte-identical to the 0.2.12 development candidate that passed editing, search, task, table, attachment and export checks together with Bridge. Disable/re-enable, removal/reinstallation of identical business bundles, and a normal Host restart retained notes and attachments. See the [validation record](./docs/VALIDATION.md#0213--dsh-021-alpha3-web-compatibility) for the exact tested package and scope.
 
 Earlier acceptance covers DSH 0.2.0-rc.2 (official macOS desktop app) and 0.2.1-alpha.1 / alpha.2 (Web). This pass adds no acceptance for native alpha.3 Desktop, Desktop font-size shortcuts, physical Windows/Linux systems, arbitrary other plugin combinations, or hot replacement with changed business code.
