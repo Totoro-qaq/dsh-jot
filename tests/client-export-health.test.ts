@@ -156,6 +156,18 @@ test('starting a fresh status refresh cannot forget a known failed engine on net
   assert.equal(exportBlocked(refreshed.at(-1), 'pdf'), true)
 })
 
+test('only a verified ready refresh can clear a known failed format, not a pending or malformed response', async () => {
+  for (const response of [undefined, { ...ready, pdf: { status: 'checking' } }, ready] as const) {
+    const timer = clock(), updates: ExportHealth[] = []
+    const stop = watchExportHealth(async () => response as ExportCapabilities,
+      { ...timer, maxAttempts: 1, initialHealth: { ...initialExportHealth(false), pdf: capabilities.pdf },
+        onChange: value => updates.push(value) })
+    await settled()
+    assert.equal(updates.at(-1)?.pdf.status, response === ready ? 'ready' : 'unavailable')
+    stop()
+  }
+})
+
 test('request timeout aborts its request, reports unknown and leaves no timer running', async () => {
   const timer = clock(), updates: ExportHealth[] = []
   let signal: AbortSignal | undefined

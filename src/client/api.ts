@@ -1,5 +1,5 @@
 import { compareNotes } from '../model.js'
-import type { AgentEdit, AttachmentCapabilities, AttachmentInfo, Folder, ImportSummary, JotApi, JotState, LibraryDownload, Note, NoteDownload, NoteInput, NotePatch, NoteQuery, PurgeResult } from './types.js'
+import type { AgentEdit, AttachmentCapabilities, AttachmentInfo, ExportCapabilities, Folder, ImportSummary, JotApi, JotState, LibraryDownload, Note, NoteDownload, NoteInput, NotePatch, NoteQuery, PurgeResult } from './types.js'
 
 export class JotApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -123,6 +123,7 @@ export function createJotApi(base = '/jot/api'): JotApi {
     setAgentEnabled: agentEnabled => request<{ agentEnabled: boolean }>('/settings', 'PATCH', { agentEnabled }),
     getAttachment: id => request<AttachmentInfo>(`/attachments/${encodeURIComponent(id)}`),
     getAttachmentCapabilities: () => request<AttachmentCapabilities>('/attachment-capabilities'),
+    getExportCapabilities: options => request<ExportCapabilities>('/export-capabilities', 'GET', undefined, options?.signal),
     prepareAttachmentPreview: (id, options) => request<{ path: string }>(`/attachments/${encodeURIComponent(id)}/preview`, 'POST', {}, options?.signal),
     openAttachment: (id, options) => request<void>(`/attachments/${encodeURIComponent(id)}/open`, 'POST', {}, options?.signal),
     async uploadAttachment(file) {

@@ -28,6 +28,8 @@ const BY_CODE: Record<string, Copy> = {
   ATTACHMENT_OPEN_CANCELLED: ['已取消打开附件。', 'Opening was cancelled.'],
   ATTACHMENT_PREVIEW_FAILED: ['附件预览没能准备好，请下载后查看。', 'The preview could not be prepared. Download the file instead.'],
   INVALID_EXPORT_FORMAT: ['请选择 TXT、Markdown、PDF 或 Word。', 'Choose TXT, Markdown, PDF or Word.'],
+  PDF_ENGINE_UNAVAILABLE: ['PDF 导出模块不可用，笔记和其他导出格式不受影响（PDF_ENGINE_UNAVAILABLE）。', 'The PDF export engine is unavailable. Notes and other export formats are unaffected (PDF_ENGINE_UNAVAILABLE).'],
+  DOCX_ENGINE_UNAVAILABLE: ['Word 导出模块不可用，笔记和其他导出格式不受影响（DOCX_ENGINE_UNAVAILABLE）。', 'The Word export engine is unavailable. Notes and other export formats are unaffected (DOCX_ENGINE_UNAVAILABLE).'],
   IMPORT_TOO_LARGE: ['导入内容超过 200 MiB，请分批导入。', 'The import is over 200 MiB. Import it in parts.'],
 }
 
