@@ -146,7 +146,7 @@ for (const failure of ['missing-pdf-font', 'broken-docx']) {
         assert.ok((await exportJotNote(note, 'txt')).buffer.length > 0);
         assert.ok((await exportJotNote(note, healthy)).buffer.length > 0);
         await assert.rejects(exportJotNote(note, broken), { code: broken.toUpperCase() + '_ENGINE_UNAVAILABLE' });
-        await assert.rejects(exportJotLibrary({ notes: [{ ...note, id: 'synthetic', folderId: null }], folders: [] }, broken),
+        await assert.rejects(exportJotLibrary({ notes: [{ ...note, text: '仍然能用', id: 'synthetic', folderId: null }], folders: [] }, broken),
           { code: broken.toUpperCase() + '_ENGINE_UNAVAILABLE', status: 409 });
       `)
     } finally {
