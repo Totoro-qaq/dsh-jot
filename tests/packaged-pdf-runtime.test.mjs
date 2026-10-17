@@ -26,13 +26,13 @@ async function legacyProfile(root) {
       if (controlled.has(dependency)) continue
       const link = join(modules, dependency)
       await mkdir(dirname(link), { recursive: true })
-      await symlink(await realpath(join(dirname(source), dependency)), link).catch(error => {
+      await symlink(await realpath(join(dirname(source), dependency)), link, process.platform === 'win32' ? 'junction' : undefined).catch(error => {
         if (error.code !== 'EEXIST') throw error
       })
     }
   }
   for (const name of ['docx', 'fflate']) {
-    await symlink(await realpath(resolve('node_modules', name)), join(modules, name))
+    await symlink(await realpath(resolve('node_modules', name)), join(modules, name), process.platform === 'win32' ? 'junction' : undefined)
   }
   // Reproduce the exact installed 1.4.0 manifest defect, without reading or
   // modifying the user's real profile. The existing dist files are unchanged.
@@ -134,7 +134,7 @@ for (const failure of ['missing-pdf-font', 'broken-docx']) {
       }
       runPackaged(`
         import assert from 'node:assert/strict';
-        const { exportJotNote, exportHealth } = await import(${JSON.stringify(entry)});
+        const { exportJotNote, exportJotLibrary, exportHealth } = await import(${JSON.stringify(entry)});
         const broken = ${JSON.stringify(failure === 'broken-docx' ? 'docx' : 'pdf')};
         const healthy = broken === 'pdf' ? 'docx' : 'pdf';
         const note = { title: 'Independent note', content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '仍然能用' }] }] } };
@@ -146,6 +146,8 @@ for (const failure of ['missing-pdf-font', 'broken-docx']) {
         assert.ok((await exportJotNote(note, 'txt')).buffer.length > 0);
         assert.ok((await exportJotNote(note, healthy)).buffer.length > 0);
         await assert.rejects(exportJotNote(note, broken), { code: broken.toUpperCase() + '_ENGINE_UNAVAILABLE' });
+        await assert.rejects(exportJotLibrary({ notes: [{ ...note, id: 'synthetic', folderId: null }], folders: [] }, broken),
+          { code: broken.toUpperCase() + '_ENGINE_UNAVAILABLE', status: 409 });
       `)
     } finally {
       await rm(root, { recursive: true, force: true })
