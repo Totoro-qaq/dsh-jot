@@ -4,7 +4,7 @@ import type { JotStore } from './store.js'
 import { boundedString, documentAttachmentIds, MAX_DOC_BYTES, MAX_TITLE_LENGTH, onlyKeys, validateId, validateRichDoc, type RichDoc } from './model.js'
 import { AttachmentStore, validateAttachmentId } from './attachments.js'
 import type { AttachmentActions } from './attachment-actions.js'
-import { EXPORT_FORMATS, exportJotLibrary, exportJotNote, LIBRARY_EXPORT_FORMATS, type ExportFormat, type LibraryExportFormat } from './exports.js'
+import { EXPORT_FORMATS, exportHealth, exportJotLibrary, exportJotNote, LIBRARY_EXPORT_FORMATS, type ExportFormat, type LibraryExportFormat } from './exports.js'
 import { importArchive, MAX_IMPORT_BYTES } from './imports.js'
 
 export const JOT_API_PATH = '/jot/api'
@@ -218,7 +218,14 @@ export function createJotHandler(store: JotStore, options: JotHttpOptions = {}) 
       const method = request.method ?? 'GET'
       let data: unknown
       let status = 200
-      if (path === '/attachment-capabilities') {
+      if (path === '/export-capabilities') {
+        if (method !== 'GET') {
+          response.setHeader('allow', 'GET')
+          throw new HttpError('METHOD_NOT_ALLOWED', 'Export health requires GET.', 405)
+        }
+        exportHealth.start()
+        data = exportHealth.snapshot()
+      } else if (path === '/attachment-capabilities') {
         if (method !== 'GET') {
           response.setHeader('allow', 'GET')
           throw new HttpError('METHOD_NOT_ALLOWED', 'Unsupported attachment operation.', 405)

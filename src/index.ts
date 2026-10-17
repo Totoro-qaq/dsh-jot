@@ -10,6 +10,7 @@ import { registerJotTools } from './tools.js'
 import { AttachmentStore, DEFAULT_ATTACHMENT_MAX_BYTES, DEFAULT_ATTACHMENT_TOTAL_BYTES } from './attachments.js'
 import { documentAttachmentIds } from './model.js'
 import { createAttachmentActions } from './attachment-actions.js'
+import { exportHealth } from './exports.js'
 
 export const name = 'dsh-jot'
 const AGENT_ACCESS_CHECK_MS = 10_000
@@ -21,6 +22,8 @@ export const Config = z.object({
 })
 
 export function apply(ctx: Context, config: { directory?: string; attachmentMaxBytes?: number; attachmentMaxTotalBytes?: number } = {}): void {
+  // Start optional format checks without awaiting them or gating the notes application.
+  exportHealth.start()
   const directory = resolve(config.directory ?? resolve(process.env.DSH_HOME || resolve(homedir(), '.dsh'), 'jot'))
   const store = new JotStore({ directory })
   const attachments = new AttachmentStore({ directory, maxFileBytes: config.attachmentMaxBytes, maxTotalBytes: config.attachmentMaxTotalBytes })

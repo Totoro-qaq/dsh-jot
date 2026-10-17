@@ -1,13 +1,10 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Readable } from 'node:stream'
-import PDFDocument from 'pdfkit'
-import {
-  Document, ExternalHyperlink, HeadingLevel, ImageRun, LevelFormat, Packer,
-  AlignmentType, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, UnderlineType,
-  WidthType, type IRunOptions, type ParagraphChild,
-} from 'docx'
+import type PDFDocument from 'pdfkit'
+import type { IRunOptions, ParagraphChild, Paragraph, Table } from 'docx'
 import { strToU8, zipSync } from 'fflate'
+import { createExportHealth } from './export-health.js'
 import {
   StoreError, boundedString, MAX_TITLE_LENGTH, validateAttachmentId, validateRichDoc,
   type RichDoc, type RichMark, type RichNode,
@@ -211,6 +208,13 @@ function markdownBlock(node: RichNode, assets: Assets): string {
   return node.type === 'blockquote' ? body.split('\n').map(line => `> ${line}`).join('\n') : body
 }
 
+let pdfEngine: Promise<{ default: typeof PDFDocument }> | undefined
+let wordEngine: Promise<typeof import('docx')> | undefined
+
+async function wordDocument(input: Input, assets: Assets): Promise<Buffer> {
+  const { Document, ExternalHyperlink, HeadingLevel, ImageRun, LevelFormat, Packer,
+    AlignmentType, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, UnderlineType, WidthType,
+  } = await (wordEngine ??= import('docx'))
 function markOptions(marks: RichMark[] = []): IRunOptions {
   const options: IRunOptions = { font: { name: 'Noto Sans SC', eastAsia: 'Noto Sans SC' } }
   return marks.reduce<IRunOptions>((result, mark) => {
@@ -230,7 +234,6 @@ function docxInline(node: RichNode): ParagraphChild[] {
   const link = node.marks?.find(mark => mark.type === 'link')
   return [link ? new ExternalHyperlink({ link: String(link.attrs?.href), children: [run] }) : run]
 }
-async function wordDocument(input: Input, assets: Assets): Promise<Buffer> {
   let counter = 0
   const numbering: { reference: string; levels: { level: number; format: typeof LevelFormat.DECIMAL; text: string; start: number }[] }[] = []
   const heading = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6]
@@ -302,6 +305,8 @@ interface PdfRun { text: string; marks?: RichMark[] }
 interface PdfFragment extends PdfRun { width: number }
 interface PdfLine { fragments: PdfFragment[] }
 async function pdfDocument(input: Input, assets: Assets, fontDirectory?: string): Promise<Buffer> {
+  // The published build redirects this import to its private, locked Node runtime.
+  const { default: PDFDocument } = await (pdfEngine ??= import('pdfkit'))
   const fonts = fontDirectory ?? fileURLToPath(new URL('../assets/fonts/', import.meta.url))
   const doc = new PDFDocument({ size: 'A4', margin: 48, bufferPages: true, info: { Title: input.title, Creator: 'Jot' } })
   const stream = doc as unknown as Readable
@@ -525,12 +530,21 @@ async function pdfDocument(input: Input, assets: Assets, fontDirectory?: string)
   return finished
 }
 
+const probe: Input = { title: 'Jot', content: { type: 'doc', content: [
+  { type: 'paragraph', content: [{ type: 'text', text: '导出检查 Export check', marks: [{ type: 'bold' }] }] },
+] } }
+export const exportHealth = createExportHealth({
+  pdf: () => pdfDocument(probe, new Map()),
+  docx: () => wordDocument(probe, new Map()),
+})
+
 /** Export a detached draft without updating notes or resolving paths from its content. */
 export async function exportJotNote(input: Input, format: ExportFormat, options: ExportOptions = {}): Promise<NoteExport> {
   if (!EXPORT_FORMATS.includes(format)) invalid('Unsupported export format')
   const title = boundedString(input.title, MAX_TITLE_LENGTH, 'title')
   const content = validateRichDoc(input.content)
   const validated = { title, content }
+  await exportHealth.require(format)
   const assets = await loadAssets(content, options.attachmentLoader)
   let buffer: Buffer, extension: string = format, contentType: string
   if (format === 'txt') {
