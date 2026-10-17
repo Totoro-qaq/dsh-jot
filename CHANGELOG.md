@@ -12,6 +12,10 @@
 
 No notes schema, storage migration, agent-access default, or other plugin configuration changes. The preflight checks engine/font readiness, not every possible document-specific image or layout error; it is not a worker-process sandbox.
 
+### Verification
+
+461 tests, typecheck, builds and package checks pass. Official macOS Desktop 0.2.0-rc.2 with an old dependency lock passed native editing, scrolling, PDF/Word and library downloads, early per-format fault reporting, continued writing/Word export with PDF unavailable, recovery and normal quit. See the version-specific validation record for candidate identity, tool failures and remaining platform limits.
+
 ## 0.2.13 — 2026-10-15
 
 - Support the official DSH 0.2.1-alpha.3 Web host with exact development SDK pins and the required Cordis/Schemastery alpha.2 baselines. DSH SDK peers remain host-supplied `*`, the existing bounded host engine range is retained, and prior supported host versions remain listed.

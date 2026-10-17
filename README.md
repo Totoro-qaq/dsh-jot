@@ -67,7 +67,7 @@ DSH 从 0.2.1-alpha.4 起引入自定义插件市场，也可以通过 Discover 
 
 ## 兼容性
 
-Jot **0.2.14** 修复了旧 profile 中 PDF 依赖损坏导致整个插件无法启动的问题。PDF 和 Word 导出分别做后台预检，异常时提前提示并只停用对应格式；笔记、Markdown 和纯文本导出不受影响。旧 profile 回归、桌面宿主验收范围和仍待完成的检查见[本版记录](./docs/VALIDATION.md#0214--legacy-profile-export-isolation)。这不是存储迁移，不会清理笔记或其他插件。
+Jot **0.2.14** 修复了旧 profile 中 PDF 依赖损坏导致整个插件无法启动的问题。PDF 和 Word 导出分别做后台预检，异常时提前提示并只停用对应格式；笔记、Markdown 和纯文本导出不受影响。已在官方 macOS 桌面版 0.2.0-rc.2 的旧锁环境完成原生编辑、滚动、导出、故障隔离和恢复验收，范围见[本版记录](./docs/VALIDATION.md#0214--legacy-profile-export-isolation)。这不是存储迁移，不会清理笔记或其他插件。
 
 Jot **0.2.13** 支持官方 DSH 0.2.1-alpha.3 Web。Host/Client 运行时与本轮受测的 0.2.12 开发候选包字节一致：与 Bridge 共同完成编辑、搜索、待办、表格、附件与导出验收，禁用恢复、同业务字节卸载重装和正常重启也保留了笔记及附件。具体受测包身份和范围见[验证记录](./docs/VALIDATION.md#0213--dsh-021-alpha3-web-compatibility)。
 

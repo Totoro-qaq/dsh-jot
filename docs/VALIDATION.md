@@ -5,7 +5,8 @@ Dates: 2026-10-02 through 2026-10-17 (Asia/Shanghai). Each section applies only 
 ## 0.2.14 — legacy-profile export isolation
 
 Preparation checked 2026-10-17, starting from `e6a78a0dcc7758bc84ae6189a21109d0878251f8`.
-Publication, merge and native GUI acceptance remain separate gates; this record does not establish them.
+Publication and merge remain separate gates; this record establishes local,
+packaged and native GUI acceptance, not publication.
 
 ### Cause and fix
 
@@ -66,8 +67,8 @@ Authenticated API checks created and revised a synthetic note, checked a task,
 edited a table and attached a PNG. All four single-note formats and Markdown,
 PDF and Word library ZIPs passed file/content checks. PDF contains embedded
 fonts, Unicode mappings and the PNG; DOCX contains the checked task, table and
-image. AI collaboration stayed disabled. Native GUI interaction is still
-pending and must not be inferred from these API checks.
+image. AI collaboration stayed disabled. These API checks are distinct from
+the native GUI acceptance below.
 
 The isolated application then exited normally and restarted with new Electron
 and Host PIDs. A second authenticated pass verified the exact canonical note,
@@ -75,17 +76,62 @@ checked task, edited table and original PNG hash, then repeated all seven
 export downloads successfully. This establishes Host restart persistence, not
 native-window focus, menu, modal or scrolling behavior.
 
-The daily app remained running; its manifest, lock and Bridge bundle hashes
-were unchanged. The installed application was not modified. The native app's
+The daily app remained running during the first Host API pass, then the user
+explicitly exited it so the UI driver could safely select the isolated native
+instance. Daily manifest, lock and Bridge bundle hashes were unchanged. The
+installed application was not modified. The native app's
 OS crash-report directory is shared even with isolated userData; no existing
 report was edited or removed. No paid model call was used. Synthetic fixtures
 and logs remain local and are not included in the npm package.
 
+### Native macOS GUI acceptance
+
+The unmodified official Desktop 0.2.0-rc.2 application used the same isolated
+old-lock profile and the accepted 0.2.14 candidate. The Client, Host and private
+PDF runtime hashes match the final source build. The official welcome page's
+**Add API Key → Set up later** path entered the workspace without credentials.
+
+- Opened Jot through its native global-panel entry. Existing Chinese text,
+  table, PNG and checked tasks rendered; AI collaboration remained off.
+- Edited the title and toggled a task through the native controls. The saved
+  note and list reflected both changes. Created a separate 60-paragraph note,
+  scrolled from the first lines to line 60, and inspected the actual scrollbar;
+  the saved-state indicator and More actions control remained reachable.
+- Exported PDF and Word through the actual note menu and macOS save sheets.
+  Independent file checks confirm a valid PDF with embedded fonts, Unicode
+  mappings and image, and a DOCX containing the edited title and table text.
+  The library-export modal showed all three formats and its complete actions
+  without clipping. Keyboard radio selection exported a Markdown library ZIP;
+  its manifest, note and original PNG were independently checked.
+- With the app stopped, temporarily moved only the isolated candidate's private
+  PDF runtime aside. On restart, Jot displayed `PDF_ENGINE_UNAVAILABLE` before
+  opening an export menu. Only PDF was disabled in both the note menu and
+  library modal; Word, Markdown and TXT remained available. Editing/saving the
+  long note and actually downloading Word still succeeded. Restoring the exact
+  runtime and restarting cleared the warning, returned all four formats to
+  ready, and retained both notes and the text saved during the fault.
+- Cmd+Q with dialogs closed exited with code 0 in normal, fault and recovery
+  runs. An earlier quit attempt while a native save workflow was unresolved
+  did not exit; no passing quit result is claimed for an open save sheet.
+
+The UI tool intermittently reported ScreenCaptureKit -3811/-3812 errors.
+Fresh full accessibility snapshots and rebinding recovered observation; the
+errors were not treated as product crashes or successful interactions. The
+first folder-navigation/save attempt was cancelled before the later successful
+downloads. A frozen pre-GUI API snapshot check then differed because the GUI
+had deliberately edited the title/task and normalized the editor's trailing
+paragraph; it is not a persistence regression. New assertions checked the
+actual saved GUI edits and the recovered health state instead.
+
+All fault-injection files were restored and the isolated app was closed. The
+daily profile, notes and other plugins were not modified. Four synthetic export
+files were created in the normal Downloads folder; no existing file was replaced.
+
 ### Limits
 
 Preflight does not validate every user's document, image or layout, nor does
-an asynchronous timeout interrupt arbitrary synchronous CPU loops. Native GUI
-acceptance, physical Windows/Linux use, full layout/a11y/IME matrices and
+an asynchronous timeout interrupt arbitrary synchronous CPU loops. Physical
+Windows/Linux use, full layout/a11y/IME matrices and
 unrelated plugin combinations are not established by this preparation pass.
 No daily-profile dependency repair, cleanup or note-schema migration was made.
 
