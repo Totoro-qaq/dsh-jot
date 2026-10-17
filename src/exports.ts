@@ -627,6 +627,7 @@ export async function exportJotLibrary(input: { notes: readonly LibraryExportNot
   const maxBytes = options.maxBytes ?? MAX_LIBRARY_EXPORT_BYTES
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_LIBRARY_EXPORT_BYTES) invalid('Invalid library export size limit')
   const notes = input.notes.map(note => ({ ...note, content: validateRichDoc(note.content) }))
+  await exportHealth.require(format)
   const used = new Set<string>([LIBRARY_MANIFEST])
   const folders = new Map<string, string>()
   for (const folder of input.folders) folders.set(folder.id, uniquePath(used, '', filename(folder.name), ''))
