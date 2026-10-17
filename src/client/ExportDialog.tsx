@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { JotLocale, LibraryExportFormat } from './types.js'
+import type { ExportHealth, JotLocale, LibraryExportFormat } from './types.js'
+import { exportBlocked, exportFormatNotice } from './export-health.js'
 
 /** Matches MAX_LIBRARY_PDF_NOTES on the Host: each PDF embeds its own font subset. */
 const PDF_NOTE_LIMIT = 500
@@ -12,12 +13,13 @@ export interface ExportDialogProps {
   initialFormat: LibraryExportFormat
   busy: boolean
   error: string
+  capabilities?: ExportHealth
   onSubmit: (format: LibraryExportFormat) => void
   onClose: () => void
 }
 
 /** Several notes become one ZIP; Word is first because every office suite opens it and it embeds images. */
-export function ExportDialog({ locale, scope, count, initialFormat, busy, error, onSubmit, onClose }: ExportDialogProps) {
+export function ExportDialog({ locale, scope, count, initialFormat, busy, error, capabilities, onSubmit, onClose }: ExportDialogProps) {
   const en = locale === 'en'
   const [format, setFormat] = useState<LibraryExportFormat>(initialFormat)
   const choices: Array<{ value: LibraryExportFormat; label: string; detail: string }> = [
@@ -27,14 +29,18 @@ export function ExportDialog({ locale, scope, count, initialFormat, busy, error,
     { value: 'md', label: 'Markdown', detail: en ? 'Plain text for Obsidian and other note apps.' : '纯文本格式，方便导入 Obsidian 等笔记软件。' },
   ]
   const tooManyForPdf = format === 'pdf' && count > PDF_NOTE_LIMIT
-  return <form className="jot-export-form" onSubmit={event => { event.preventDefault(); if (!busy && count && !tooManyForPdf) onSubmit(format) }}>
+  const blocked = exportBlocked(capabilities, format)
+  return <form className="jot-export-form" onSubmit={event => { event.preventDefault(); if (!busy && count && !tooManyForPdf && !blocked) onSubmit(format) }}>
     <p className="jot-dialog-text">{en ? `Export ${scope}.` : `导出${scope}。`}</p>
     <fieldset className="jot-export-choices" disabled={busy}>
       <legend>{en ? 'Format' : '格式'}</legend>
       {choices.map(choice => <label key={choice.value} className="jot-export-choice">
         <input type="radio" name="jot-export-format" value={choice.value} checked={format === choice.value}
+          disabled={exportBlocked(capabilities, choice.value)}
           onChange={() => setFormat(choice.value)} data-autofocus={format === choice.value ? '' : undefined} />
-        <span><strong>{choice.label}</strong><small>{choice.detail}</small></span>
+        <span><strong>{choice.label}</strong><small>{choice.detail}</small>
+          {exportFormatNotice(capabilities, choice.value, locale) && <small className="jot-export-health-detail">{exportFormatNotice(capabilities, choice.value, locale)}</small>}
+        </span>
       </label>)}
     </fieldset>
     <p className="jot-export-note">{en
@@ -46,7 +52,7 @@ export function ExportDialog({ locale, scope, count, initialFormat, busy, error,
     {error && <p className="jot-dialog-error" role="alert">{error}</p>}
     <div className="jot-dialog-actions">
       <button type="button" className="jot-btn" disabled={busy} onClick={onClose}>{en ? 'Cancel' : '取消'}</button>
-      <button type="submit" className="jot-btn jot-primary" disabled={busy || !count || tooManyForPdf}>
+      <button type="submit" className="jot-btn jot-primary" disabled={busy || !count || tooManyForPdf || blocked}>
         {busy ? en ? 'Exporting…' : '正在导出…' : en ? 'Export' : '导出'}</button>
     </div>
   </form>

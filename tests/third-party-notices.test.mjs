@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { isBuiltin } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { collectBundleInputs } from '../scripts/bundle.mjs'
+import { build } from 'esbuild'
+import { collectBundleInputs, pdfRuntimeBuildOptions } from '../scripts/bundle.mjs'
 import { electsMit, noticeCoversPackage, packageLocation, writeThirdPartyNotices } from '../scripts/third-party-notices.mjs'
 
 async function fixturePackage(root, { name, version, license, author, files }) {
@@ -161,12 +163,13 @@ test('a bundled package with no copyright holder and no usable license fails clo
   await assert.rejects(writeThirdPartyNotices({ ...options, inputs: [namedUnknown] }), /No license text/)
 })
 
-test('every package bundled by the client build has a copyright notice and license text', async () => {
-  const { server, client } = await collectBundleInputs()
+test('every package bundled by the client or private PDF build has a copyright notice and license text', async () => {
+  const { server, client, pdf } = await collectBundleInputs()
   assert.equal(server.some(input => input.includes('node_modules')), false)
+  assert.equal(pdf.some(input => input.includes('@deepseek-ai')), false, 'the private engine must not bundle a host SDK')
   const root = await mkdtemp(join(tmpdir(), 'jot-bundle-'))
   const result = await writeThirdPartyNotices({
-    inputs: [...server, ...client],
+    inputs: [...server, ...client, ...pdf],
     licensesDir: join(root, 'LICENSES'),
     noticesFile: join(root, 'THIRD_PARTY_NOTICES.md'),
   })
@@ -174,6 +177,7 @@ test('every package bundled by the client build has a copyright notice and licen
     '@tanstack/react-virtual', '@tiptap/core', '@tiptap/pm', '@tiptap/starter-kit',
     'fflate', 'linkifyjs', 'orderedmap', 'prosemirror-model', 'prosemirror-view', 'rope-sequence', 'w3c-keyname',
     '@deepseek-ai/dsh-util-workspace-path',
+    'pdfkit', 'fontkit', 'unicode-properties',
   ]
   const names = new Set(result.packages.map(pkg => pkg.name))
   for (const name of required) assert.ok(names.has(name), `missing bundled notice for ${name}`)
@@ -199,6 +203,13 @@ test('every package bundled by the client build has a copyright notice and licen
     assert.equal(normalize(await readFile(join('LICENSES', name), 'utf8')), normalize(await readFile(join(root, 'LICENSES', name), 'utf8')))
   }
   assert.equal(normalize(await readFile('THIRD_PARTY_NOTICES.md', 'utf8')), normalize(result.markdown))
+})
+
+test('the private PDF runtime leaves only Node built-ins external', async () => {
+  const result = await build({ ...pdfRuntimeBuildOptions, outfile: 'lib/pdf-runtime.cjs', write: false })
+  const external = Object.values(result.metafile.outputs).flatMap(output => output.imports)
+  assert.ok(external.length > 0)
+  for (const dependency of external) assert.ok(isBuiltin(dependency.path), `unexpected shared PDF dependency: ${dependency.path}`)
 })
 
 test('Noto Sans SC keeps the upstream Adobe copyright and reserved font name', async () => {

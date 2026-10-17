@@ -9,6 +9,7 @@ html[data-platform=darwin] .jot-wide.jot-host-chrome .jot-workbench-header{paddi
 .jot-app *{box-sizing:border-box}.jot-app button,.jot-app input,.jot-app select,.jot-app textarea{font:inherit;color:inherit}.jot-app button{cursor:pointer}.jot-app button:disabled{cursor:default;opacity:.5}.jot-app button,.jot-app input,.jot-app select{outline-offset:3px}.jot-app :focus-visible{outline:2px solid var(--jot-accent)}
 
 .jot-topbar{display:flex;align-items:center;gap:8px;height:38px;min-height:38px;padding:0 12px;flex:none;border-bottom:1px solid var(--jot-line)}
+.jot-app .jot-export-health{display:flex;align-items:flex-start;gap:10px;flex:none;min-width:0;max-height:140px;overflow:auto;padding:7px 12px;border-bottom:1px solid var(--jot-line);color:var(--jot-muted);font:var(--jot-caption-font);line-height:1.5}.jot-app .jot-export-health span{flex:1;min-width:0;overflow-wrap:anywhere}.jot-app .jot-export-health button{flex:none;white-space:nowrap}
 .jot-brand{font:inherit;font-size:calc(var(--dsh-content-font-size,14px) + 2px);font-weight:600;line-height:1.5;letter-spacing:0;white-space:nowrap}
 .jot-workbench-header .jot-brand{margin-right:4px}.jot-toolbar-label{font:inherit;font-weight:500;line-height:22px;color:var(--jot-fg);white-space:nowrap}.jot-toolbar-end{display:inline-flex;align-items:center;gap:4px;margin-left:auto;flex:none}
 .jot-btn,.jot-icon-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--jot-line);border-radius:var(--dsw-radius-sm,8px);background:transparent;height:28px;min-height:28px;line-height:1;padding:0 8px;white-space:nowrap;flex:none}
@@ -130,6 +131,7 @@ body[data-ds-dark-theme] .jot-highlight-swatch{color:var(--jot-fg)!important}bod
 :is(.jot-app,.jot-overlay-root) .jot-export-choice span{display:flex;flex-direction:column;gap:2px;min-width:0}
 :is(.jot-app,.jot-overlay-root) .jot-export-choice strong{color:var(--jot-fg);font-weight:600}
 :is(.jot-app,.jot-overlay-root) .jot-export-choice small{color:var(--jot-muted);font:var(--jot-caption-font)}
+:is(.jot-app,.jot-overlay-root) .jot-export-choice:has(input:disabled){cursor:default;background:var(--jot-hover)}:is(.jot-app,.jot-overlay-root) .jot-export-choice .jot-export-health-detail{overflow-wrap:anywhere;line-height:1.5}
 :is(.jot-app,.jot-overlay-root) .jot-export-note{margin:0;color:var(--jot-muted);font:var(--jot-caption-font);line-height:1.6}
 :is(.jot-app,.jot-overlay-root) .jot-import-pick{display:flex;flex-wrap:wrap;gap:8px}
 :is(.jot-app,.jot-overlay-root) .jot-import-summary{margin:0;padding:8px 10px;border:1px solid var(--jot-line);border-radius:8px;color:var(--jot-fg);overflow-wrap:anywhere}

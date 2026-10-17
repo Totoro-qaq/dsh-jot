@@ -44,6 +44,10 @@ export interface AttachmentInfo {
 }
 export interface AttachmentCapabilities { nativeOpen: boolean }
 export type ExportFormat = 'txt' | 'md' | 'pdf' | 'docx'
+export interface ExportCapability { status: 'checking' | 'ready' | 'unavailable'; code?: string }
+export type ExportCapabilities = Record<ExportFormat, ExportCapability>
+/** Unknown means an old Host or an unsuccessful check, never a healthy engine. */
+export type ExportHealth = Record<ExportFormat, { status: ExportCapability['status'] | 'unknown'; code?: string }>
 export type LibraryExportFormat = 'docx' | 'pdf' | 'md'
 export interface NoteDownload { blob: Blob; filename: string }
 export interface LibraryDownload extends NoteDownload { notes: number; attachments: number }
@@ -84,6 +88,7 @@ export interface JotApi {
   uploadAttachment(file: File): Promise<AttachmentInfo>
   getAttachment(id: string): Promise<AttachmentInfo>
   getAttachmentCapabilities?(): Promise<AttachmentCapabilities>
+  getExportCapabilities?(options?: { signal?: AbortSignal }): Promise<ExportCapabilities>
   prepareAttachmentPreview?(id: string, options?: { signal?: AbortSignal }): Promise<{ path: string }>
   openAttachment?(id: string, options?: { signal?: AbortSignal }): Promise<void>
   exportNote(input: { title: string; content: RichDoc }, format: ExportFormat): Promise<NoteDownload>

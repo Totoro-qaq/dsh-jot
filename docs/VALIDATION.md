@@ -1,6 +1,139 @@
 # Validation — dsh-jot
 
-Dates: 2026-10-02 through 2026-10-15 (Asia/Shanghai). Each section applies only to the version it names.
+Dates: 2026-10-02 through 2026-10-17 (Asia/Shanghai). Each section applies only to the version it names.
+
+## 0.2.14 — legacy-profile export isolation
+
+Preparation checked 2026-10-17, starting from `e6a78a0dcc7758bc84ae6189a21109d0878251f8`.
+Publication and merge remain separate gates; this record establishes local,
+packaged and native GUI acceptance, not publication.
+
+### Cause and fix
+
+An existing official macOS Desktop 0.2.0-rc.2 profile retained `pdfkit@0.17.2` →
+`fontkit@2.0.4` → `unicode-properties@1.4.0`. The latter's CommonJS export
+points at `./dist.main.cjs` instead of the existing `./dist/main.cjs`.
+Its `MODULE_NOT_FOUND` exception propagates through the Host's resolver.
+Jot 0.2.13 eagerly imported the PDF engine, so this optional format prevented
+the whole plugin from importing. Clean profiles had Unicode 1.4.1 and missed
+this case. Ordinary Node SDK resolution also found older ancestor links, but
+the actual Desktop resolver uses the bundled SDK; those links were not changed.
+
+The release build now ships a private CJS PDF runtime from the frozen lock,
+along with PDFKit's 14 AFM fonts and ICC asset. Only Node built-ins remain
+external to that runtime. PDF and Word engines load independently; background
+synthetic documents test engine/font readiness without reading user notes.
+An authenticated, same-origin GET reports each format's checking/ready/unavailable
+status. Both single-note and library export enforce the same preflight result.
+The Client checks before export, bounds polling, cancels detached requests,
+shows failures by format, and does not erase known failures on a failed refresh.
+Unknown older Hosts are labeled unverified, not healthy. Diagnostics expose
+stable codes, not raw exception paths or stacks.
+
+### Automated evidence
+
+- `pnpm check`: **461 tests passed**, typecheck and Host/Client/private PDF builds.
+- `node scripts/pack-check.mjs`: Host import, shared React factory and notices passed.
+- Three packaged regressions retain a broken old Unicode resolver while exporting
+  Chinese text, PNG and a multi-page PDF; missing fonts and a broken DOCX entry
+  are detected early without disabling other formats. The same health gate
+  covers whole-library ZIP exports.
+- Host health helper coverage: **100% lines/branches/functions**. Client helper:
+  **99.20% lines, 97.27% branches, 100% functions**. These are focused new-module
+  figures, not whole-repository coverage.
+- Package inspection includes `lib/pdf-runtime.cjs`, all 15 PDFKit data assets,
+  bundled CJK fonts and their generated notices. No DSH SDK is bundled into the PDF runtime.
+
+TDD checkpoints: `3cb6e69` records failing startup isolation and missing health
+endpoint tests; `19cc44e` records missing UI capability behavior; `d61276f`
+records the old-profile PDF failure; `e1644e2`, `c2255fa` and `abd4302` record
+the corresponding fixes. Review found library export bypassing preflight;
+the corrected valid-note negative test failed with raw ENOENT/MODULE_NOT_FOUND
+before `1964af9` fixed it. A preliminary test fixture omitted the required
+note text; its TypeError is not evidence for the product defect.
+
+### Official macOS Desktop Host with the retained old lock
+
+A separate DSH_HOME, Desktop profile, Electron userData, workspace and loopback
+port were used with the unmodified official 0.2.0-rc.2 application. Only the daily
+profile's package manifest and lock were copied; no notes, cookies, credentials
+or personal configuration were copied. Frozen installation retained Jot 0.2.13,
+Bridge 0.3.10 and Unicode 1.4.0. The original Jot API returned 404. Replacing only
+the isolated profile's Jot with the 0.2.14 candidate restored the API while the
+old broken Unicode resolver remained reproducibly broken.
+
+The running native Desktop Host reported all four formats ready before export.
+Authenticated API checks created and revised a synthetic note, checked a task,
+edited a table and attached a PNG. All four single-note formats and Markdown,
+PDF and Word library ZIPs passed file/content checks. PDF contains embedded
+fonts, Unicode mappings and the PNG; DOCX contains the checked task, table and
+image. AI collaboration stayed disabled. These API checks are distinct from
+the native GUI acceptance below.
+
+The isolated application then exited normally and restarted with new Electron
+and Host PIDs. A second authenticated pass verified the exact canonical note,
+checked task, edited table and original PNG hash, then repeated all seven
+export downloads successfully. This establishes Host restart persistence, not
+native-window focus, menu, modal or scrolling behavior.
+
+The daily app remained running during the first Host API pass, then the user
+explicitly exited it so the UI driver could safely select the isolated native
+instance. Daily manifest, lock and Bridge bundle hashes were unchanged. The
+installed application was not modified. The native app's
+OS crash-report directory is shared even with isolated userData; no existing
+report was edited or removed. No paid model call was used. Synthetic fixtures
+and logs remain local and are not included in the npm package.
+
+### Native macOS GUI acceptance
+
+The unmodified official Desktop 0.2.0-rc.2 application used the same isolated
+old-lock profile and the accepted 0.2.14 candidate. The Client, Host and private
+PDF runtime hashes match the final source build. The official welcome page's
+**Add API Key → Set up later** path entered the workspace without credentials.
+
+- Opened Jot through its native global-panel entry. Existing Chinese text,
+  table, PNG and checked tasks rendered; AI collaboration remained off.
+- Edited the title and toggled a task through the native controls. The saved
+  note and list reflected both changes. Created a separate 60-paragraph note,
+  scrolled from the first lines to line 60, and inspected the actual scrollbar;
+  the saved-state indicator and More actions control remained reachable.
+- Exported PDF and Word through the actual note menu and macOS save sheets.
+  Independent file checks confirm a valid PDF with embedded fonts, Unicode
+  mappings and image, and a DOCX containing the edited title and table text.
+  The library-export modal showed all three formats and its complete actions
+  without clipping. Keyboard radio selection exported a Markdown library ZIP;
+  its manifest, note and original PNG were independently checked.
+- With the app stopped, temporarily moved only the isolated candidate's private
+  PDF runtime aside. On restart, Jot displayed `PDF_ENGINE_UNAVAILABLE` before
+  opening an export menu. Only PDF was disabled in both the note menu and
+  library modal; Word, Markdown and TXT remained available. Editing/saving the
+  long note and actually downloading Word still succeeded. Restoring the exact
+  runtime and restarting cleared the warning, returned all four formats to
+  ready, and retained both notes and the text saved during the fault.
+- Cmd+Q with dialogs closed exited with code 0 in normal, fault and recovery
+  runs. An earlier quit attempt while a native save workflow was unresolved
+  did not exit; no passing quit result is claimed for an open save sheet.
+
+The UI tool intermittently reported ScreenCaptureKit -3811/-3812 errors.
+Fresh full accessibility snapshots and rebinding recovered observation; the
+errors were not treated as product crashes or successful interactions. The
+first folder-navigation/save attempt was cancelled before the later successful
+downloads. A frozen pre-GUI API snapshot check then differed because the GUI
+had deliberately edited the title/task and normalized the editor's trailing
+paragraph; it is not a persistence regression. New assertions checked the
+actual saved GUI edits and the recovered health state instead.
+
+All fault-injection files were restored and the isolated app was closed. The
+daily profile, notes and other plugins were not modified. Four synthetic export
+files were created in the normal Downloads folder; no existing file was replaced.
+
+### Limits
+
+Preflight does not validate every user's document, image or layout, nor does
+an asynchronous timeout interrupt arbitrary synchronous CPU loops. Physical
+Windows/Linux use, full layout/a11y/IME matrices and
+unrelated plugin combinations are not established by this preparation pass.
+No daily-profile dependency repair, cleanup or note-schema migration was made.
 
 ## 0.2.13 — DSH 0.2.1-alpha.3 Web compatibility
 

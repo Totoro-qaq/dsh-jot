@@ -18,6 +18,7 @@ import { ImportPackError, importFile, packImport } from './import-files.js'
 import { appendExcerpt, duplicateNoteInput, sortNotes, type NoteSortMode } from './note-actions.js'
 import { downloadNote } from './downloads.js'
 import { exportSavedLibrary } from './library-export.js'
+import { exportBlocked, exportFormatLabel, exportFormatNotice, exportHealthNotice, initialExportHealth, watchExportHealth } from './export-health.js'
 import { describeError } from './errors.js'
 import { jotStyles } from './styles.js'
 import { NoteList } from './NoteList.js'
@@ -136,6 +137,13 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const [helpOpen, setHelpOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportError, setExportError] = useState('')
+  const [exportHealth, setExportHealth] = useState(() => initialExportHealth(Boolean(api.getExportCapabilities)))
+  const [exportHealthRevision, setExportHealthRevision] = useState(0)
+  const exportHealthRef = useRef({ api, value: exportHealth })
+  useEffect(() => watchExportHealth(api.getExportCapabilities ? options => api.getExportCapabilities!(options) : undefined, {
+    initialHealth: exportHealthRef.current.api === api ? exportHealthRef.current.value : undefined,
+    onChange: value => { exportHealthRef.current = { api, value }; setExportHealth(value) },
+  }), [api, exportHealthRevision])
   const [importOpen, setImportOpen] = useState(false)
   const [importError, setImportError] = useState('')
   const [revertConfirm, setRevertConfirm] = useState(false)
@@ -648,6 +656,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const exportCurrent = (format: ExportFormat) => void perform(async () => {
     const current = draftRef.current
     if (!current) return
+    if (exportBlocked(exportHealth, format)) throw new Error(exportFormatNotice(exportHealth, format, locale))
     const result = await api.exportNote({ title: current.title, content: current.content }, format)
     downloadNote(result)
     showToast(copy(`已导出 ${result.filename}`, `Exported ${result.filename}`))
@@ -811,6 +820,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   /** Unsaved writing is saved first so the archive matches what is on screen. */
   const exportLibrary = async (format: LibraryExportFormat) => {
     if (busy || !api.exportLibrary) return
+    if (exportBlocked(exportHealth, format)) { setExportError(exportFormatNotice(exportHealth, format, locale)); return }
     setBusy(true); setExportError('')
     storage.set('dsh-jot:export-format:v1', format)
     try {
@@ -944,8 +954,8 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
   const exportItems: ActionMenuEntry[] = [
     { heading: copy('导出为', 'Export as') },
     ...(['md', 'docx', 'pdf', 'txt'] as ExportFormat[]).map(format => ({
-      label: format === 'docx' ? 'Word（DOCX）' : format === 'md' ? 'Markdown' : format === 'pdf' ? 'PDF' : copy('纯文本（TXT）', 'Plain text (TXT)'),
-      icon: 'export' as const, onSelect: () => exportCurrent(format), disabled: busy || uploadBusy,
+      label: exportFormatLabel(format, exportHealth, locale),
+      icon: 'export' as const, onSelect: () => exportCurrent(format), disabled: busy || uploadBusy || exportBlocked(exportHealth, format),
     })),
   ]
   const menuItems: ActionMenuEntry[] = !draft ? [] : selectedDeleted ? [
@@ -1274,6 +1284,11 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
         }} aria-label={copy('打开完整笔记页', 'Open full notes')} title={copy('打开完整笔记页', 'Open full notes')}><Icon name="expand" /></button>}
       </div>
     </header>}
+    {exportHealthNotice(exportHealth, locale) && <div className="jot-export-health" role="status" aria-live="polite">
+      <span>{exportHealthNotice(exportHealth, locale)}</span>
+      <button className="jot-text-btn" type="button" disabled={exportHealth.pdf.status === 'checking' || exportHealth.docx.status === 'checking'}
+        onClick={() => setExportHealthRevision(value => value + 1)}>{copy('刷新状态', 'Refresh status')}</button>
+    </div>}
     {error && <div className="jot-global-error" role="alert"><span>{error}</span><button className="jot-text-btn" type="button" onClick={() => { setError(''); void refresh().catch(cause => setError(describeError(cause, locale))) }}>{copy('重试', 'Retry')}</button></div>}
     {uploadBusy && <div className="jot-upload-line" role="status">{copy('正在添加附件…', 'Adding files…')}</div>}
     {dragging && <div className="jot-drop-hint">{copy('松开以添加到笔记', 'Drop files into the note')}</div>}
@@ -1324,7 +1339,7 @@ export function JotApp({ mode, onExpand, openNoteRequest, onNoteRequestHandled, 
       </div>
     </Modal>}
     {exportOpen && <Modal size="small" title={copy('导出笔记', 'Export notes')} closeLabel={copy('关闭', 'Close')} onClose={() => { if (!busy) setExportOpen(false) }}>
-      <ExportDialog locale={locale} scope={exportScope} count={exportable} busy={busy} error={exportError}
+      <ExportDialog locale={locale} scope={exportScope} count={exportable} busy={busy} error={exportError} capabilities={exportHealth}
         initialFormat={(['docx', 'pdf', 'md'] as const).find(format => format === storage.get('dsh-jot:export-format:v1')) ?? 'docx'}
         onSubmit={format => void exportLibrary(format)} onClose={() => setExportOpen(false)} />
     </Modal>}
