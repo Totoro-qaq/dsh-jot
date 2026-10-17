@@ -63,6 +63,19 @@ test('HTTP is fail-closed without the DSH authorizer', async t => {
   assert.equal((await request('/notes', 'POST', {})).status, 401)
 })
 
+test('export health is available before exporting and keeps the application authentication fence', async t => {
+  const { request } = await fixture(t)
+  const response = await request('/export-capabilities')
+  assert.equal(response.status, 200)
+  const { data } = await response.json()
+  assert.equal(data.txt.status, 'ready')
+  assert.equal(data.md.status, 'ready')
+  for (const format of ['pdf', 'docx']) assert.ok(['checking', 'ready', 'unavailable'].includes(data[format].status))
+  assert.equal((await request('/export-capabilities', 'GET', undefined, { cookie: '' })).status, 401)
+  assert.equal((await request('/export-capabilities', 'GET', undefined, { origin: 'https://attacker.invalid' })).status, 403)
+  assert.equal((await request('/export-capabilities', 'POST', {})).status, 405)
+})
+
 test('HTTP validates and persists rich notes, rejects stale revisions, and restores trash', async t => {
   const { request } = await fixture(t)
   const createdResponse = await request('/notes', 'POST', { title: 'Discussion', content: docFromText('Keep this point') })
